@@ -23,6 +23,7 @@ export default function App() {
   const [saved, setSaved] = useState<SinkDesign[]>(loadDesigns)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [settingsCollapsed, setSettingsCollapsed] = useState(false)
+  const [fitMobilePreview, setFitMobilePreview] = useState(false)
   const [showStart, setShowStart] = useState(true)
   const [notice, setNotice] = useState('')
   const activeSvg = useRef<SVGSVGElement>(null)
@@ -80,10 +81,12 @@ export default function App() {
             <button className="panel-toggle" onClick={() => setSettingsCollapsed((value) => !value)} aria-label={settingsCollapsed ? 'Show sink parameters' : 'Hide sink parameters'} title={settingsCollapsed ? 'Show parameters' : 'Expand preview'}><SidebarSimple size={17} /></button>
             <nav className="view-tabs" aria-label="Drawing views">{tabs.map((tab) => <button key={tab.key} className={activeView === tab.key ? 'active' : ''} onClick={() => setActiveView(tab.key)}><span>{tab.label}</span></button>)}</nav>
           </div>
+          {activeView !== 'threeD' && <button className="mobile-scale-toggle" onClick={() => setFitMobilePreview((value) => !value)} aria-pressed={fitMobilePreview}>{fitMobilePreview ? 'Readable' : 'Fit view'}</button>}
           <div className={`geometry-status ${errorCount ? 'invalid' : ''}`}>{errorCount ? <Warning size={14} /> : <span />} {errorCount ? `${errorCount} geometry ${errorCount === 1 ? 'check' : 'checks'}` : 'Live geometry'}</div>
         </div>
-        <div className={`drawing-stage ${activeView === 'client' ? 'sheet-stage' : ''}`}>
+        <div className={`drawing-stage ${activeView === 'client' ? 'sheet-stage' : ''} ${fitMobilePreview ? 'mobile-fit' : 'mobile-readable'}`}>
           <div className="canvas-rulers"><span>0</span><span>100</span><span>200</span><span>300</span><span>400</span></div>
+          {activeView !== 'threeD' && !fitMobilePreview && <div className="mobile-pan-note">Swipe to inspect drawing</div>}
           {activeView === 'client' && <ClientPreview g={geometry} svgRef={activeSvg} />}
           {activeView === 'threeD' && <Suspense fallback={<div className="loading-3d"><span /><strong>Preparing 3D geometry</strong></div>}><ThreeDPreview g={geometry} onCanvas={(canvas) => { threeCanvas.current = canvas }} /></Suspense>}
           {activeView === 'axonometric' && <AxonometricView g={geometry} svgRef={activeSvg} />}
