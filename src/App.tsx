@@ -66,7 +66,7 @@ export default function App() {
 
   return <div className={`app-shell ${showStart ? 'start-mode' : ''}`}>
     <header className="app-header">
-      <div className="brand-lockup"><img className="brand-logo" src="/assets/artiling-logo.png" alt="Artiling Studio" /><div><strong>ARTILING STUDIO</strong><small>Bespoke Sink Designer</small></div></div>
+      <div className="brand-lockup"><img className="brand-logo brand-app-icon" src="/icons/artiling-icon-192.png" alt="Artiling Studio" /><div><strong>ARTILING STUDIO</strong><small>Bespoke Sink Designer</small></div></div>
       <div className="header-reference"><span>{design.reference || 'UNSAVED'}</span><b>{design.overallWidth} × {design.overallDepth} × {design.overallHeight}</b><small>millimetres</small></div>
       <button className="saved-trigger" onClick={() => setDrawerOpen(true)}><FolderSimple size={17} /> Saved designs <em>{saved.length}</em></button>
     </header>
