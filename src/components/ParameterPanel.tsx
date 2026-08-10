@@ -1,9 +1,9 @@
 import type { ChangeEvent, ReactNode } from 'react'
-import { CaretDown, CaretUp } from '@phosphor-icons/react'
+import { ArrowRight, CaretDown, CaretUp } from '@phosphor-icons/react'
 import type { SinkDesign } from '../types/sink'
 import type { ValidationErrors } from '../lib/validation'
 
-type Props = { design: SinkDesign; errors: ValidationErrors; onChange: (patch: Partial<SinkDesign>) => void }
+type Props = { design: SinkDesign; errors: ValidationErrors; onChange: (patch: Partial<SinkDesign>) => void; onShowPreview?: () => void }
 
 function Group({ title, children }: { title: string; children: ReactNode }) {
   return <details className="parameter-group"><summary>{title}<span>+</span></summary><div className="group-body">{children}</div></details>
@@ -28,12 +28,12 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
   return <label className="toggle-row"><span>{label}</span><input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} /><i /></label>
 }
 
-export function ParameterPanel({ design: d, errors, onChange }: Props) {
+export function ParameterPanel({ design: d, errors, onChange, onShowPreview }: Props) {
   const number = (key: keyof SinkDesign) => (value: string | number) => onChange({ [key]: value } as Partial<SinkDesign>)
   const calculatedBasinWidth = Math.max(1, d.overallWidth - Math.max(d.leftRimWidth, d.porcelainThickness) - Math.max(d.rightRimWidth, d.porcelainThickness))
   const calculatedBasinDepth = Math.max(1, d.overallDepth - Math.max(d.frontRimWidth, d.porcelainThickness) - Math.max(d.rearRimWidth, d.porcelainThickness))
   return <aside className="parameter-panel">
-    <div className="panel-heading"><span>Sink parameters</span><strong>{Object.keys(errors).length ? `${Object.keys(errors).length} checks` : 'Geometry valid'}</strong></div>
+    <div className="panel-heading"><span>Sink parameters</span><strong>{Object.keys(errors).length ? `${Object.keys(errors).length} checks` : 'Geometry valid'}</strong>{onShowPreview && <button className="mobile-show-preview" type="button" onClick={onShowPreview}>Preview <ArrowRight weight="bold" /></button>}</div>
     <div className="parameter-scroll">
       <Group title="Project details">
         <Field label="Client name" value={d.clientName} onChange={number('clientName')} />
