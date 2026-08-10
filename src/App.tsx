@@ -23,7 +23,7 @@ export default function App() {
   const [saved, setSaved] = useState<SinkDesign[]>(loadDesigns)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [settingsCollapsed, setSettingsCollapsed] = useState(false)
-  const [fitMobilePreview, setFitMobilePreview] = useState(false)
+  const [fitMobilePreview, setFitMobilePreview] = useState(true)
   const [showStart, setShowStart] = useState(true)
   const [notice, setNotice] = useState('')
   const activeSvg = useRef<SVGSVGElement>(null)
@@ -47,7 +47,7 @@ export default function App() {
       return next
     })
   }
-  const fresh = () => { setDesign(createDefaultDesign()); setActiveView('top'); setSettingsCollapsed(false); setShowStart(false); notify('New design ready') }
+  const fresh = () => { setDesign(createDefaultDesign()); setActiveView('top'); setSettingsCollapsed(false); setFitMobilePreview(true); setShowStart(false); notify('New design ready') }
   const save = () => { if (errorCount) return notify('Resolve geometry checks before saving'); const next = { ...design, updatedAt: new Date().toISOString() }; setDesign(next); setSaved(persistDesign(next)); notify('Design saved locally') }
   const duplicate = (source = design) => { const next = { ...source, id: crypto.randomUUID(), reference: `${source.reference}-COPY`, updatedAt: new Date().toISOString() }; setDesign(next); setSaved(persistDesign(next)); setActiveView('top'); setSettingsCollapsed(false); setShowStart(false); setDrawerOpen(false); notify('Design duplicated') }
   const open = (source: SinkDesign) => { setDesign(source); setActiveView('top'); setSettingsCollapsed(false); setShowStart(false); setDrawerOpen(false); notify(`${source.reference} opened`) }
@@ -81,7 +81,7 @@ export default function App() {
             <button className="panel-toggle" onClick={() => setSettingsCollapsed((value) => !value)} aria-label={settingsCollapsed ? 'Show sink parameters' : 'Hide sink parameters'} title={settingsCollapsed ? 'Show parameters' : 'Expand preview'}><SidebarSimple size={17} /></button>
             <nav className="view-tabs" aria-label="Drawing views">{tabs.map((tab) => <button key={tab.key} className={activeView === tab.key ? 'active' : ''} onClick={() => setActiveView(tab.key)}><span>{tab.label}</span></button>)}</nav>
           </div>
-          {activeView !== 'threeD' && <button className="mobile-scale-toggle" onClick={() => setFitMobilePreview((value) => !value)} aria-pressed={fitMobilePreview}>{fitMobilePreview ? 'Readable' : 'Fit view'}</button>}
+          {activeView !== 'threeD' && <button className="mobile-scale-toggle" onClick={() => setFitMobilePreview((value) => !value)} aria-pressed={fitMobilePreview}>Fit view</button>}
           <div className={`geometry-status ${errorCount ? 'invalid' : ''}`}>{errorCount ? <Warning size={14} /> : <span />} {errorCount ? `${errorCount} geometry ${errorCount === 1 ? 'check' : 'checks'}` : 'Live geometry'}</div>
         </div>
         <div className={`drawing-stage ${activeView === 'client' ? 'sheet-stage' : ''} ${fitMobilePreview ? 'mobile-fit' : 'mobile-readable'}`}>

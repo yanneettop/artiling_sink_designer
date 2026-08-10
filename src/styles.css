@@ -274,13 +274,15 @@ button:active { transform: translateY(1px) scale(.985); }
   .toggle-row i::after { width: 16px; height: 16px; top: 3px; left: 3px; }
   .toggle-row input:checked + i::after { transform: translateX(18px); }
 
-  .preview-toolbar { min-width: 0; padding: 0; overflow: hidden; background: var(--paper); }
-  .view-navigation { flex: 1 1 auto; min-width: 0; }
+  .preview-toolbar { position: sticky; top: 62px; z-index: 7; min-width: 0; height: 54px; padding: 0; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr) auto; background: var(--paper); box-shadow: 0 4px 12px rgba(55,51,44,.08); }
+  .view-navigation { width: 100%; min-width: 0; display: grid; grid-template-columns: 48px minmax(0, 1fr); }
   .panel-toggle { width: 48px; min-width: 48px; }
-  .view-tabs { flex: 1 1 auto; min-width: 0; gap: 3px; padding: 6px; }
-  .view-tabs button { min-width: max-content; height: 42px; padding: 0 12px; font-size: 11px; }
+  .view-tabs { width: 100%; min-width: 0; gap: 3px; padding: 6px; scroll-snap-type: x proximity; overscroll-behavior-x: contain; }
+  .view-tabs button { min-width: max-content; height: 42px; padding: 0 12px; font-size: 11px; scroll-snap-align: start; }
+  .view-tabs button.active { box-shadow: none; }
+  .view-tabs button:active { transform: none; }
   .geometry-status { display: none; }
-  .mobile-scale-toggle { display: block; flex: 0 0 auto; min-width: 70px; min-height: 44px; margin: 5px 5px 5px 0; border: 1px solid #b9b6ae; background: #f2f0ea; font-family: var(--technical); font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  .mobile-scale-toggle { display: block; width: 74px; min-height: 44px; margin: 5px 5px 5px 0; border: 1px solid #b9b6ae; background: #f2f0ea; font-family: var(--technical); font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
   .mobile-scale-toggle[aria-pressed="true"] { color: #fff; border-color: var(--accent); background: var(--accent); }
 
   .drawing-stage, .drawing-stage.sheet-stage { margin: 8px; padding: 24px 12px 14px; display: block; overflow: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; scrollbar-color: #918e86 #e4e1da; scrollbar-width: thin; }
