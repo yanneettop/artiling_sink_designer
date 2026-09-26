@@ -1,5 +1,3 @@
-import { jsPDF } from 'jspdf'
-
 function serialize(svg: SVGSVGElement): string {
   const clone = svg.cloneNode(true) as SVGSVGElement
   clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
@@ -29,7 +27,7 @@ async function rasterize(svg: SVGSVGElement, scale = 3): Promise<HTMLCanvasEleme
 export async function exportPng(svg: SVGSVGElement, name: string) { const canvas = await rasterize(svg); canvas.toBlob((blob) => blob && download(blob, `${name}.png`), 'image/png') }
 export function exportCanvasPng(canvas: HTMLCanvasElement, name: string) { canvas.toBlob((blob) => blob && download(blob, `${name}.png`), 'image/png') }
 export async function exportPdf(svg: SVGSVGElement, name: string) {
-  const canvas = await rasterize(svg, 2.5)
+  const [{ jsPDF }, canvas] = await Promise.all([import('jspdf'), rasterize(svg, 2.5)])
   const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
   pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 10, 10, 277, 195)
   pdf.save(`${name}.pdf`)

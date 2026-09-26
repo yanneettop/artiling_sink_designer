@@ -1,9 +1,34 @@
-export type DrainType = 'Circular' | 'Linear' | 'Concealed Linear'
-export type TapType = 'None' | 'Wall Mounted' | 'Deck Mounted'
-export type BaseType = 'Flat' | 'Sloped Front to Back'
-export type FallControl = 'Fall and Low Point' | 'Corner Depths'
-export type FallLowPoint = 'Rear Internal Corner' | 'Front Internal Corner'
-export type Finish = 'Matt' | 'Polished' | 'Textured'
+export const DRAIN_TYPES = ['Concealed Linear', 'Circular', 'Linear'] as const
+export const TAP_TYPES = ['Deck Mounted', 'Wall Mounted', 'None'] as const
+export const BASE_TYPES = ['Sloped Front to Back', 'Flat'] as const
+export const FALL_CONTROLS = ['Fall and Low Point', 'Corner Depths'] as const
+export const FALL_LOW_POINTS = ['Rear Internal Corner', 'Front Internal Corner'] as const
+export const FINISHES = ['Matt', 'Polished', 'Textured'] as const
+export const MOUNTING_TYPES = ['Wall Mounted', 'Supported', 'Freestanding'] as const
+export const SHAPE_TYPES = ['Rectangular', 'Irregular'] as const
+export const CONCEALED_DETAILS = ['Standard', 'Specialist'] as const
+export const MATERIAL_SUPPLY = ['TBC', 'Client', 'Artiling'] as const
+export const DELIVERY_TYPES = ['None', 'London', 'Large', 'Manual'] as const
+export const INSTALLATION_TYPES = ['None', 'Standard', 'Large', 'Manual'] as const
+export const TEMPLATING_TYPES = ['None', 'Physical'] as const
+export const PRICING_MODES = ['Portfolio', 'Standard'] as const
+export const REVIEW_FLAGS = ['Specialist reinforcement', 'Difficult porcelain', 'Complex mounting', 'Non-standard fabrication'] as const
+
+export type DrainType = typeof DRAIN_TYPES[number]
+export type TapType = typeof TAP_TYPES[number]
+export type BaseType = typeof BASE_TYPES[number]
+export type FallControl = typeof FALL_CONTROLS[number]
+export type FallLowPoint = typeof FALL_LOW_POINTS[number]
+export type Finish = typeof FINISHES[number]
+export type MountingType = typeof MOUNTING_TYPES[number]
+export type ShapeType = typeof SHAPE_TYPES[number]
+export type ConcealedDetail = typeof CONCEALED_DETAILS[number]
+export type MaterialSupply = typeof MATERIAL_SUPPLY[number]
+export type DeliveryType = typeof DELIVERY_TYPES[number]
+export type InstallationType = typeof INSTALLATION_TYPES[number]
+export type TemplatingType = typeof TEMPLATING_TYPES[number]
+export type PricingMode = typeof PRICING_MODES[number]
+export type ReviewFlag = typeof REVIEW_FLAGS[number]
 
 export interface SinkDesign {
   id: string
@@ -12,9 +37,13 @@ export interface SinkDesign {
   projectName: string
   reference: string
   notes: string
+  siteLocation: string
   material: string
   finish: Finish
   materialNotes: string
+  materialSupply: MaterialSupply
+  /** Actual supplier cost of the porcelain in GBP, before handling / waste allowance. */
+  materialCost: number
   overallWidth: number
   overallDepth: number
   overallHeight: number
@@ -28,6 +57,10 @@ export interface SinkDesign {
   /** Legacy values retained only when loading older saved designs. */
   leftSideThickness?: number
   rightSideThickness?: number
+  basinCount: number
+  mountingType: MountingType
+  shapeType: ShapeType
+  overflow: boolean
   upstandEnabled: boolean
   backUpstandHeight: number
   drawersEnabled: boolean
@@ -39,6 +72,8 @@ export interface SinkDesign {
   equalDrawerHeights: boolean
   drawerGap: number
   drawerTopGap: number
+  vanityCladding: boolean
+  shelfCount: number
   baseType: BaseType
   baseFall: number
   fallControl: FallControl
@@ -47,6 +82,7 @@ export interface SinkDesign {
   rearBowlDepth: number
   frontBowlDepth: number
   drainType: DrainType
+  concealedDetail: ConcealedDetail
   drainPosition: 'Centre' | 'Rear'
   drainDiameter: number
   drainLength: number
@@ -59,29 +95,49 @@ export interface SinkDesign {
   coverPlateFullWidth: boolean
   drainGap: number
   tapType: TapType
+  /** Tap holes per basin (deck-mounted taps only). */
   tapHoleCount: number
   tapHoleDiameter: number
   tapPosition: 'Centre' | 'Custom'
   tapOffsetBack: number
   tapOffsetLeft: number
+  deliveryType: DeliveryType
+  manualDelivery: number
+  installationType: InstallationType
+  manualInstallation: number
+  templating: TemplatingType
+  pricingMode: PricingMode
+  manualComplexity: number
+  manualComplexityNote: string
+  directJobCost: number
+  reviewFlags: ReviewFlag[]
 }
 
-export type ViewName = 'threeD' | 'axonometric' | 'client' | 'top' | 'front' | 'side'
+export type ViewName = 'quote' | 'threeD' | 'axonometric' | 'client' | 'top' | 'front' | 'side'
 
-export const createDefaultDesign = (): SinkDesign => ({
-  id: crypto.randomUUID(), updatedAt: new Date().toISOString(),
-  clientName: '', projectName: '', reference: 'AS-SINK-001', notes: '',
-  material: 'Porcelain', finish: 'Matt', materialNotes: '',
+export function createId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  return `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+export const createDefaultDesign = (reference = 'AS-SINK-001'): SinkDesign => ({
+  id: createId(), updatedAt: new Date().toISOString(),
+  clientName: '', projectName: '', reference, notes: '', siteLocation: '',
+  material: '', finish: 'Matt', materialNotes: '', materialSupply: 'TBC', materialCost: 0,
   overallWidth: 800, overallDepth: 450, overallHeight: 250, porcelainThickness: 12,
   leftRimWidth: 50, rightRimWidth: 50, frontRimWidth: 50, rearRimWidth: 80,
-  upstandEnabled: false, backUpstandHeight: 0,
+  basinCount: 1, mountingType: 'Supported', shapeType: 'Rectangular', overflow: false,
+  upstandEnabled: false, backUpstandHeight: 100,
   drawersEnabled: false, drawerCount: 2, drawerAutoWidth: true, drawerWidth: 800,
   drawerDepth: 430, drawerHeights: [240, 240], equalDrawerHeights: true, drawerGap: 0, drawerTopGap: 0,
+  vanityCladding: false, shelfCount: 0,
   baseType: 'Sloped Front to Back', baseFall: 20,
   fallControl: 'Fall and Low Point', fallLowPoint: 'Rear Internal Corner', shallowBowlDepth: 138, rearBowlDepth: 158, frontBowlDepth: 138,
-  drainType: 'Concealed Linear', drainPosition: 'Rear', drainDiameter: 45,
+  drainType: 'Concealed Linear', concealedDetail: 'Standard', drainPosition: 'Rear', drainDiameter: 45,
   drainLength: 700, drainWidth: 40, drainOffsetBack: 32, drainOffsetLeft: 38,
   centreDrainAutomatically: true, coverPlateWidth: 700, coverPlateDepth: 40, coverPlateFullWidth: true, drainGap: 5,
   tapType: 'Deck Mounted', tapHoleCount: 1, tapHoleDiameter: 35,
   tapPosition: 'Centre', tapOffsetBack: 25, tapOffsetLeft: 400,
+  deliveryType: 'London', manualDelivery: 0, installationType: 'Standard', manualInstallation: 0, templating: 'None',
+  pricingMode: 'Portfolio', manualComplexity: 0, manualComplexityNote: '', directJobCost: 0, reviewFlags: [],
 })

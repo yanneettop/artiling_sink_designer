@@ -1,41 +1,67 @@
-import { lazy, Suspense, useMemo, useRef, useState, type TouchEvent } from 'react'
-import { ArrowLeft, Copy, DownloadSimple, FilePdf, FloppyDisk, FolderSimple, Plus, SidebarSimple, Stack, Warning } from '@phosphor-icons/react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type TouchEvent } from 'react'
+import { ArrowLeft, CaretDown, Copy, DownloadSimple, FilePdf, FloppyDisk, FolderSimple, Plus, SidebarSimple, Stack, Warning } from '@phosphor-icons/react'
 import { ParameterPanel } from './components/ParameterPanel'
+import { PriceBar, PricePanel } from './components/PricePanel'
+import { QuoteReview } from './components/QuoteReview'
 import { AxonometricView, ClientPreview, FrontView, SideView, TopView } from './components/TechnicalSvg'
 import { SavedDesigns } from './components/SavedDesigns'
 import { StartScreen } from './components/StartScreen'
 import { calculateGeometry } from './lib/sinkGeometry'
 import { validateGeometry } from './lib/validation'
+import { designAdvisories } from './lib/review'
 import { exportCanvasPng, exportPdf, exportPng, exportSvg } from './lib/export'
-import { loadDesigns, persistDesign, removeDesign } from './lib/storage'
-import { createDefaultDesign, type SinkDesign, type ViewName } from './types/sink'
+import { loadDesigns, loadDraft, nextReference, persistDesign, removeDesign, sameDesign, saveDraft } from './lib/storage'
+import { priceDesign } from './pricing/fromDesign'
+import { createDefaultDesign, createId, type SinkDesign, type ViewName } from './types/sink'
 
 const tabs: { key: ViewName; label: string }[] = [
-  { key: 'threeD', label: '3D preview' }, { key: 'axonometric', label: 'Axonometric' }, { key: 'client', label: 'Client preview' }, { key: 'top', label: 'Top view' },
-  { key: 'front', label: 'Front view' }, { key: 'side', label: 'Side section' },
+  { key: 'quote', label: 'Quote' }, { key: 'top', label: 'Top' }, { key: 'side', label: 'Section' }, { key: 'front', label: 'Front' },
+  { key: 'threeD', label: '3D' }, { key: 'axonometric', label: 'Axonometric' }, { key: 'client', label: 'Client sheet' },
 ]
 
 const ThreeDPreview = lazy(() => import('./components/ThreeDPreview').then((module) => ({ default: module.ThreeDPreview })))
 
+const initialDraft = loadDraft()
+
 export default function App() {
-  const [design, setDesign] = useState<SinkDesign>(createDefaultDesign)
-  const [activeView, setActiveView] = useState<ViewName>('top')
   const [saved, setSaved] = useState<SinkDesign[]>(loadDesigns)
+  const [design, setDesign] = useState<SinkDesign>(() => initialDraft ?? createDefaultDesign(nextReference(loadDesigns())))
+  const [baseline, setBaseline] = useState<SinkDesign | null>(() => initialDraft ? saved.find((item) => item.id === initialDraft.id) ?? null : null)
+  const [activeView, setActiveView] = useState<ViewName>('top')
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [settingsCollapsed, setSettingsCollapsed] = useState(false)
   const [fitMobilePreview, setFitMobilePreview] = useState(true)
   const [mobileScreen, setMobileScreen] = useState<'settings' | 'preview'>('settings')
-  const [showStart, setShowStart] = useState(true)
-  const [notice, setNotice] = useState('')
+  const [showStart, setShowStart] = useState(!initialDraft)
+  const [notice, setNotice] = useState(initialDraft ? 'Unsaved draft restored' : '')
+  const noticeTimer = useRef<number | undefined>(undefined)
   const activeSvg = useRef<SVGSVGElement>(null)
   const threeCanvas = useRef<HTMLCanvasElement>(null)
   const clientExportSvg = useRef<SVGSVGElement>(null)
+  const exportMenu = useRef<HTMLDetailsElement>(null)
   const swipeStart = useRef<{ x: number; y: number; blocked: boolean } | null>(null)
+
   const geometry = useMemo(() => calculateGeometry(design), [design])
   const errors = useMemo(() => validateGeometry(geometry), [geometry])
+  const price = useMemo(() => priceDesign(design), [design])
+  const warnings = useMemo(() => [...price.warnings, ...designAdvisories(design)], [price, design])
   const errorCount = Object.keys(errors).length
+  const dirty = baseline ? !sameDesign(baseline, design) : true
 
-  const notify = (message: string) => { setNotice(message); window.setTimeout(() => setNotice(''), 2600) }
+  const notify = useCallback((message: string) => {
+    window.clearTimeout(noticeTimer.current)
+    setNotice(message)
+    noticeTimer.current = window.setTimeout(() => setNotice(''), 2800)
+  }, [])
+  useEffect(() => { if (initialDraft) noticeTimer.current = window.setTimeout(() => setNotice(''), 2800) }, [])
+
+  // Autosave the working design so a refresh never loses an enquiry.
+  useEffect(() => {
+    if (showStart) return
+    const timer = window.setTimeout(() => saveDraft(design), 250)
+    return () => window.clearTimeout(timer)
+  }, [design, showStart])
+
   const update = (patch: Partial<SinkDesign>) => {
     setDesign((current) => {
       const next = { ...current, ...patch }
@@ -49,27 +75,64 @@ export default function App() {
       return next
     })
   }
-  const fresh = () => { setDesign(createDefaultDesign()); setActiveView('top'); setSettingsCollapsed(false); setFitMobilePreview(true); setMobileScreen('settings'); setShowStart(false); notify('New design ready') }
-  const save = () => { if (errorCount) return notify('Resolve geometry checks before saving'); const next = { ...design, updatedAt: new Date().toISOString() }; setDesign(next); setSaved(persistDesign(next)); notify('Design saved locally') }
-  const duplicate = (source = design) => { const next = { ...source, id: crypto.randomUUID(), reference: `${source.reference}-COPY`, updatedAt: new Date().toISOString() }; setDesign(next); setSaved(persistDesign(next)); setActiveView('top'); setSettingsCollapsed(false); setMobileScreen('settings'); setShowStart(false); setDrawerOpen(false); notify('Design duplicated') }
-  const open = (source: SinkDesign) => { setDesign(source); setActiveView('top'); setSettingsCollapsed(false); setMobileScreen('settings'); setShowStart(false); setDrawerOpen(false); notify(`${source.reference} opened`) }
-  const remove = (id: string) => { setSaved(removeDesign(id)); notify('Saved design deleted') }
+
+  const confirmDiscard = () => showStart || !dirty || window.confirm(`Discard unsaved changes to ${design.reference || 'this design'}?`)
+  const load = (next: SinkDesign, savedVersion: SinkDesign | null, message: string) => {
+    setDesign(next); setBaseline(savedVersion); setActiveView('top'); setSettingsCollapsed(false); setMobileScreen('settings'); setShowStart(false); setDrawerOpen(false); notify(message)
+  }
+  const fresh = () => { if (!confirmDiscard()) return; const next = createDefaultDesign(nextReference(saved)); load(next, next, 'New design ready') }
+  const save = () => {
+    const next = { ...design, updatedAt: new Date().toISOString() }
+    const result = persistDesign(next)
+    if (!result.ok) return notify('Save failed. Browser storage is full or blocked.')
+    setDesign(next); setBaseline(next); setSaved(result.designs)
+    notify(errorCount ? `Saved with ${errorCount} geometry check${errorCount > 1 ? 's' : ''} outstanding` : 'Design saved')
+  }
+  const duplicate = (source = design) => {
+    // Duplicating the current design carries its unsaved changes into the copy.
+    if (source.id !== design.id && !confirmDiscard()) return
+    const next = { ...source, id: createId(), reference: nextReference([...saved, design]), updatedAt: new Date().toISOString() }
+    const result = persistDesign(next)
+    if (!result.ok) return notify('Duplicate failed. Browser storage is full or blocked.')
+    setSaved(result.designs); load(next, next, `Duplicated as ${next.reference}`)
+  }
+  const open = (source: SinkDesign) => { if (source.id !== design.id && !confirmDiscard()) return; load(source, source, `${source.reference} opened`) }
+  const remove = (target: SinkDesign) => {
+    if (!window.confirm(`Delete ${target.reference || 'this design'} permanently?`)) return
+    setSaved(removeDesign(target.id))
+    if (target.id === design.id) setBaseline(null)
+    notify(`${target.reference} deleted`)
+  }
+  const openReview = () => { setActiveView('quote'); setMobileScreen('preview') }
+
   const fileName = (suffix: string = activeView) => `${design.reference || 'artiling-sink'}-${suffix}`.replace(/[^a-z0-9-_]/gi, '-')
   const runExport = async (kind: 'svg' | 'png' | 'pdf') => {
-    if (errorCount) return notify('Resolve geometry checks before export')
+    if (exportMenu.current) exportMenu.current.open = false
+    if (errorCount) return notify('Resolve geometry checks before exporting drawings')
     try {
-      if (kind === 'pdf' && clientExportSvg.current) await exportPdf(clientExportSvg.current, fileName('client-preview'))
-      else if (activeView === 'threeD' && kind === 'png' && threeCanvas.current) exportCanvasPng(threeCanvas.current, fileName('3d-preview'))
-      else if (activeView === 'threeD' && kind === 'svg') return notify('3D preview is raster only. Use Export PNG.')
+      if (kind === 'pdf' && clientExportSvg.current) await exportPdf(clientExportSvg.current, fileName('client-sheet'))
+      else if (activeView === 'quote') return notify('Open a drawing view to export PNG or SVG')
+      else if (activeView === 'threeD' && kind === 'png' && threeCanvas.current) exportCanvasPng(threeCanvas.current, fileName('3d'))
+      else if (activeView === 'threeD' && kind === 'svg') return notify('3D is raster only. Use PNG.')
       else if (kind === 'svg' && activeSvg.current) exportSvg(activeSvg.current, fileName())
       else if (kind === 'png' && activeSvg.current) await exportPng(activeSvg.current, fileName())
       notify(`${kind.toUpperCase()} exported`)
     } catch { notify('Export failed. Please try again.') }
   }
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's' && !showStart) { event.preventDefault(); save() }
+      if (event.key === 'Escape' && drawerOpen) setDrawerOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+
   const startSwipe = (event: TouchEvent<HTMLElement>) => {
     if (event.touches.length !== 1) return
     const target = event.target as Element
-    const blockedByControls = Boolean(target.closest('.view-tabs, .view-3d-controls'))
+    const blockedByControls = Boolean(target.closest('.view-tabs, .view-3d-controls, .segmented, .quote-review table'))
     const blockedByCanvas = mobileScreen === 'preview' && (!fitMobilePreview || activeView === 'threeD') && Boolean(target.closest('.drawing-stage'))
     swipeStart.current = { x: event.touches[0].clientX, y: event.touches[0].clientY, blocked: blockedByControls || blockedByCanvas }
   }
@@ -83,29 +146,35 @@ export default function App() {
     setMobileScreen(dx < 0 ? 'preview' : 'settings')
   }
 
+  const isDrawing = activeView !== 'quote' && activeView !== 'threeD'
+
   return <div className={`app-shell ${showStart ? 'start-mode' : ''} ${!showStart && mobileScreen === 'preview' ? 'mobile-preview-mode' : ''}`}>
     <header className="app-header">
-      <div className="brand-lockup"><img className="brand-logo brand-app-icon" src="/icons/artiling-icon-192.png" alt="Artiling Studio" /><div><strong>ARTILING STUDIO</strong><small>Bespoke Sink Designer</small></div></div>
-      <div className="header-reference"><span>{design.reference || 'UNSAVED'}</span><b>{design.overallWidth} × {design.overallDepth} × {design.overallHeight}</b><small>millimetres</small></div>
-      <button className="saved-trigger" onClick={() => setDrawerOpen(true)}><FolderSimple size={17} /> Saved designs <em>{saved.length}</em></button>
+      <div className="brand-lockup"><img className="brand-logo brand-app-icon" src="/icons/artiling-icon-192.png" alt="" /><div><strong>ARTILING STUDIO</strong><small>Sink Designer</small></div></div>
+      <div className="header-reference">
+        <span>{design.reference || 'UNSAVED'}</span>
+        <b>{design.overallWidth} × {design.overallDepth} × {design.overallHeight}</b><small>mm</small>
+        <i className={`save-state ${dirty ? 'is-dirty' : ''}`}>{dirty ? 'Unsaved changes' : 'Saved'}</i>
+      </div>
+      <button className="saved-trigger" onClick={() => setDrawerOpen(true)} aria-label={`Saved designs (${saved.length})`}><FolderSimple size={17} aria-hidden="true" /><span>Saved designs</span> <em>{saved.length}</em></button>
     </header>
 
     {showStart ? <StartScreen designs={saved} onNew={fresh} onBrowse={() => setDrawerOpen(true)} onOpen={open} /> : <>
     <main className={`workspace ${settingsCollapsed ? 'settings-collapsed' : ''} ${mobileScreen === 'preview' ? 'mobile-preview-active' : 'mobile-settings-active'}`} onTouchStart={startSwipe} onTouchEnd={finishSwipe} onTouchCancel={() => { swipeStart.current = null }}>
-      <ParameterPanel key={design.id} design={design} errors={errors} onChange={update} onShowPreview={() => setMobileScreen('preview')} />
-      <section className="preview-panel">
+      <ParameterPanel key={design.id} design={design} geometry={geometry} errors={errors} price={price} warnings={warnings} onChange={update} onShowPreview={() => setMobileScreen('preview')} />
+      <section className="preview-panel" aria-label="Preview">
         <div className="preview-toolbar">
           <div className="view-navigation">
-            <button className="panel-toggle" onClick={() => setSettingsCollapsed((value) => !value)} aria-label={settingsCollapsed ? 'Show sink parameters' : 'Hide sink parameters'} title={settingsCollapsed ? 'Show parameters' : 'Expand preview'}><SidebarSimple size={17} /></button>
-            <button className="mobile-settings-return" onClick={() => setMobileScreen('settings')} aria-label="Return to sink parameters"><ArrowLeft size={18} weight="bold" /></button>
-            <nav className="view-tabs" aria-label="Drawing views">{tabs.map((tab) => <button key={tab.key} className={activeView === tab.key ? 'active' : ''} onClick={() => setActiveView(tab.key)}><span>{tab.label}</span></button>)}</nav>
+            <button className="panel-toggle" onClick={() => setSettingsCollapsed((value) => !value)} aria-label={settingsCollapsed ? 'Show configuration' : 'Hide configuration'} aria-pressed={settingsCollapsed}><SidebarSimple size={17} /></button>
+            <button className="mobile-settings-return" onClick={() => setMobileScreen('settings')} aria-label="Back to configuration"><ArrowLeft size={18} weight="bold" /></button>
+            <div className="view-tabs" role="tablist" aria-label="Views">{tabs.map((tab) => <button key={tab.key} role="tab" id={`tab-${tab.key}`} aria-selected={activeView === tab.key} aria-controls="view-panel" className={`${activeView === tab.key ? 'active' : ''} ${tab.key === 'quote' ? 'tab-quote' : ''}`} onClick={() => setActiveView(tab.key)}><span>{tab.label}</span></button>)}</div>
           </div>
-          {activeView !== 'threeD' && <button className="mobile-scale-toggle" onClick={() => setFitMobilePreview((value) => !value)} aria-pressed={fitMobilePreview}>Fit view</button>}
-          <div className={`geometry-status ${errorCount ? 'invalid' : ''}`}>{errorCount ? <Warning size={14} /> : <span />} {errorCount ? `${errorCount} geometry ${errorCount === 1 ? 'check' : 'checks'}` : 'Live geometry'}</div>
+          {isDrawing && <button className="mobile-scale-toggle" onClick={() => setFitMobilePreview((value) => !value)} aria-pressed={fitMobilePreview}>Fit view</button>}
+          <div className={`geometry-status ${errorCount ? 'invalid' : ''}`} role="status">{errorCount ? <Warning size={14} aria-hidden="true" /> : <span aria-hidden="true" />} {errorCount ? `${errorCount} geometry ${errorCount === 1 ? 'check' : 'checks'}` : 'Geometry valid'}</div>
         </div>
-        <div className={`drawing-stage ${activeView === 'client' ? 'sheet-stage' : ''} ${fitMobilePreview ? 'mobile-fit' : 'mobile-readable'}`}>
-          <div className="canvas-rulers"><span>0</span><span>100</span><span>200</span><span>300</span><span>400</span></div>
-          {activeView !== 'threeD' && !fitMobilePreview && <div className="mobile-pan-note">Swipe to inspect drawing</div>}
+        <div id="view-panel" role="tabpanel" aria-labelledby={`tab-${activeView}`} className={`drawing-stage ${activeView === 'client' ? 'sheet-stage' : ''} ${activeView === 'quote' ? 'quote-stage' : ''} ${fitMobilePreview ? 'mobile-fit' : 'mobile-readable'}`}>
+          {isDrawing && !fitMobilePreview && <div className="mobile-pan-note">Swipe to inspect drawing</div>}
+          {activeView === 'quote' && <QuoteReview design={design} geometry={geometry} price={price} warnings={warnings} errors={errors} onNotify={notify} />}
           {activeView === 'client' && <ClientPreview g={geometry} svgRef={activeSvg} />}
           {activeView === 'threeD' && <Suspense fallback={<div className="loading-3d"><span /><strong>Preparing 3D geometry</strong></div>}><ThreeDPreview g={geometry} onCanvas={(canvas) => { threeCanvas.current = canvas }} /></Suspense>}
           {activeView === 'axonometric' && <AxonometricView g={geometry} svgRef={activeSvg} />}
@@ -114,17 +183,30 @@ export default function App() {
           {activeView === 'side' && <SideView g={geometry} svgRef={activeSvg} />}
         </div>
       </section>
+      <PricePanel design={design} price={price} warnings={warnings} onOpenReview={openReview} />
     </main>
 
     <footer className="action-bar">
-      <div className="action-group"><button onClick={fresh}><Plus />New design</button><button onClick={save} className="primary"><FloppyDisk />Save design</button><button onClick={() => duplicate()}><Copy />Duplicate</button></div>
-      <div className="action-group export-group"><button onClick={() => runExport('png')}><DownloadSimple />Export PNG</button><button onClick={() => runExport('svg')}><Stack />Export SVG</button><button onClick={() => runExport('pdf')}><FilePdf />Export PDF</button></div>
+      <PriceBar price={price} onOpenReview={openReview} />
+      <div className="action-group">
+        <button onClick={fresh}><Plus aria-hidden="true" /><span>New</span></button>
+        <button onClick={() => duplicate()}><Copy aria-hidden="true" /><span>Duplicate</span></button>
+        <details className="export-menu" ref={exportMenu}>
+          <summary><DownloadSimple aria-hidden="true" /><span>Export</span><CaretDown aria-hidden="true" className="caret" /></summary>
+          <div className="export-options">
+            <button onClick={() => runExport('pdf')}><FilePdf aria-hidden="true" />Client sheet PDF</button>
+            <button onClick={() => runExport('png')} disabled={activeView === 'quote'}><DownloadSimple aria-hidden="true" />Current view PNG</button>
+            <button onClick={() => runExport('svg')} disabled={!isDrawing}><Stack aria-hidden="true" />Current view SVG</button>
+          </div>
+        </details>
+        <button onClick={save} className="primary" title="Ctrl+S"><FloppyDisk aria-hidden="true" /><span>Save</span></button>
+      </div>
     </footer>
     </>}
 
-    <SavedDesigns designs={saved} open={drawerOpen} onClose={() => setDrawerOpen(false)} onOpen={open} onDuplicate={duplicate} onDelete={remove} />
-    {drawerOpen && <button className="drawer-backdrop" aria-label="Close saved designs" onClick={() => setDrawerOpen(false)} />}
-    {notice && <div className="toast" role="status">{notice}</div>}
-    <div className="export-only"><ClientPreview g={geometry} svgRef={clientExportSvg} /></div>
+    <SavedDesigns designs={saved} currentId={design.id} open={drawerOpen} onClose={() => setDrawerOpen(false)} onOpen={open} onDuplicate={duplicate} onDelete={remove} />
+    {drawerOpen && <div className="drawer-backdrop" aria-hidden="true" onClick={() => setDrawerOpen(false)} />}
+    <div className="toast-region" role="status" aria-live="polite">{notice && <div className="toast">{notice}</div>}</div>
+    <div className="export-only" aria-hidden="true"><ClientPreview g={geometry} svgRef={clientExportSvg} /></div>
   </div>
 }

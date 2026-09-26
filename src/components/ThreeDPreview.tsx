@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useThree } from '@react-three/fiber'
 import { Edges, Grid, Line, OrbitControls } from '@react-three/drei'
 import { BufferGeometry, DoubleSide, Float32BufferAttribute } from 'three'
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import type { SinkGeometry } from '../lib/sinkGeometry'
 
 type Vec3 = [number, number, number]
@@ -46,7 +47,7 @@ function SolidMesh({ vertices, color = porcelain, roughness = .72 }: { vertices:
 
 function CameraControls({ preset, extent, targetY }: { preset: ViewPreset; extent: number; targetY: number }) {
   const { camera } = useThree()
-  const controls = useRef<any>(null)
+  const controls = useRef<OrbitControlsImpl>(null)
   useEffect(() => {
     const positions: Record<ViewPreset, Vec3> = {
       perspective: [extent * 1.35, extent * .95, extent * 1.5],
@@ -90,7 +91,12 @@ function SinkModel({ g }: { g: SinkGeometry }) {
   ]
   const finishRoughness = d.finish === 'Polished' ? .24 : d.finish === 'Textured' ? .9 : .68
   const drawerWidth = (d.drawerAutoWidth ? d.overallWidth : d.drawerWidth) * SCALE
-  const coverWidth3d = (d.coverPlateFullWidth ? g.basinWidth : d.coverPlateWidth) * SCALE
+  const eachBasinW = g.basins[0].width
+  const coverWidth3d = (d.coverPlateFullWidth ? eachBasinW : Math.min(eachBasinW, d.coverPlateWidth)) * SCALE
+  const drainXs = g.drains.map((drain) => (drain.x - d.overallWidth / 2) * SCALE)
+  const drainZ = d.drainPosition === 'Rear' ? basinBackZ + d.drainOffsetBack * SCALE : (basinBackZ + basinFrontZ) / 2
+  const drainFloorY = d.drainPosition === 'Rear' ? rearFloorY : (rearFloorY + frontFloorY) / 2
+  const deepest = Math.max(-rearFloorY, -frontFloorY)
   const coverDepth3d = d.coverPlateDepth * SCALE
   const coverFrontZ = basinBackZ + coverDepth3d
   const coverJoinProgress = Math.min(1, Math.max(0, coverDepth3d / Math.max(.001, basinD)))
@@ -114,20 +120,20 @@ function SinkModel({ g }: { g: SinkGeometry }) {
     <Box size={[basinW, Math.max(T, -rearFloorY), T]} position={[(leftRim - rightRim) / 2, rearFloorY / 2, basinBackZ - T / 2]} roughness={finishRoughness} />
     <Box size={[basinW, Math.max(T, -frontFloorY), T]} position={[(leftRim - rightRim) / 2, frontFloorY / 2, basinFrontZ + T / 2]} roughness={finishRoughness} />
 
-    {d.drainType === 'Concealed Linear' && d.drainPosition === 'Rear' && <>
-      <Box size={[coverWidth3d, T, coverDepth3d]} position={[(leftRim - rightRim) / 2, coverJoinY - T / 2 + .003, basinBackZ + coverDepth3d / 2]} color="#ebe9e4" roughness={finishRoughness} />
-      <Line points={[[ -coverWidth3d / 2 + (leftRim - rightRim) / 2, coverJoinY + .008, coverFrontZ], [coverWidth3d / 2 + (leftRim - rightRim) / 2, coverJoinY + .008, coverFrontZ]]} color="#62635e" lineWidth={1} />
-    </>}
+    {g.basins.slice(1).map((basin, index) => <Box key={`divider-${index}`} size={[g.dividerWidth * SCALE, deepest, basinD]} position={[(basin.x - g.dividerWidth / 2 - d.overallWidth / 2) * SCALE, -deepest / 2, (basinBackZ + basinFrontZ) / 2]} roughness={finishRoughness} />)}
+    {d.drainType === 'Concealed Linear' && drainXs.map((x, index) => <group key={`cover-${index}`}>
+      <Box size={[coverWidth3d, T, coverDepth3d]} position={[x, coverJoinY - T / 2 + .003, basinBackZ + coverDepth3d / 2]} color="#ebe9e4" roughness={finishRoughness} />
+      <Line points={[[x - coverWidth3d / 2, coverJoinY + .008, coverFrontZ], [x + coverWidth3d / 2, coverJoinY + .008, coverFrontZ]]} color="#62635e" lineWidth={1} />
+    </group>)}
     {d.baseType === 'Sloped Front to Back' && <Line points={[[0, frontFloorY + .028, basinFrontZ - .08], [0, rearFloorY + .028, basinBackZ + .08]]} color="#73746e" lineWidth={1.4} />}
-    {d.drainType === 'Linear' && <Box size={[d.drainLength * SCALE, .012, d.drainWidth * SCALE]} position={[0, (d.drainPosition === 'Rear' ? rearFloorY : (rearFloorY + frontFloorY) / 2) + .005, d.drainPosition === 'Rear' ? basinBackZ + d.drainOffsetBack * SCALE : (basinBackZ + basinFrontZ) / 2]} color={dark} roughness={.95} />}
-    {d.drainType === 'Circular' && <mesh position={[0, (d.drainPosition === 'Rear' ? rearFloorY : (rearFloorY + frontFloorY) / 2) + .012, d.drainPosition === 'Rear' ? basinBackZ + d.drainOffsetBack * SCALE : (basinBackZ + basinFrontZ) / 2]} rotation={[Math.PI / 2, 0, 0]}>
+    {d.drainType === 'Linear' && drainXs.map((x, index) => <Box key={`linear-${index}`} size={[Math.min(d.drainLength, eachBasinW) * SCALE, .012, d.drainWidth * SCALE]} position={[x, drainFloorY + .005, drainZ + d.drainWidth * SCALE / 2]} color={dark} roughness={.95} />)}
+    {d.drainType === 'Circular' && drainXs.map((x, index) => <mesh key={`round-${index}`} position={[x, drainFloorY + .012, drainZ]}>
       <cylinderGeometry args={[d.drainDiameter * SCALE / 2, d.drainDiameter * SCALE / 2, .016, 32]} /><meshStandardMaterial color={dark} roughness={.95} />
-    </mesh>}
+    </mesh>)}
 
-    {d.tapType === 'Deck Mounted' && Array.from({ length: d.tapHoleCount }).map((_, index) => {
-      const spacing = d.tapHoleDiameter * 1.8 * SCALE
-      const x = (g.tapX - d.overallWidth / 2) * SCALE + (index - (d.tapHoleCount - 1) / 2) * spacing
-      return <mesh key={index} position={[x, .006, backZ + g.tapY * SCALE]}>
+    {d.tapType === 'Deck Mounted' && g.tapHoles.map((hole, index) => {
+      const x = (hole.x - d.overallWidth / 2) * SCALE
+      return <mesh key={index} position={[x, .006, backZ + hole.y * SCALE]}>
         <cylinderGeometry args={[d.tapHoleDiameter * SCALE / 2, d.tapHoleDiameter * SCALE / 2, .018, 28]} /><meshStandardMaterial color={dark} roughness={.95} />
       </mesh>
     })}
