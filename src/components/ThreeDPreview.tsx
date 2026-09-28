@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Canvas, useThree } from '@react-three/fiber'
+import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import { Edges, Environment, Grid, Lightformer, Line, OrbitControls } from '@react-three/drei'
 import {
   BoxGeometry, BufferGeometry, CanvasTexture, ExtrudeGeometry, Float32BufferAttribute, MeshPhysicalMaterial, MeshStandardMaterial,
-  MirroredRepeatWrapping, Path, PCFShadowMap, RepeatWrapping, SRGBColorSpace, Shape, TextureLoader, type Material, type Texture,
+  MirroredRepeatWrapping, Path, PCFShadowMap, RepeatWrapping, SRGBColorSpace, Shape, TextureLoader, type Group, type Material, type Texture,
 } from 'three'
 import { EffectComposer, N8AO, SMAA, ToneMapping, Vignette } from '@react-three/postprocessing'
 import { ToneMappingMode } from 'postprocessing'
@@ -313,7 +313,7 @@ function TapHandle({ x, z, metal }: { x: number; z: number; metal: Material }) {
 
 function SinkModel({ g, materials, technical }: { g: SinkGeometry; materials: Materials; technical: boolean }) {
   const d = g.design
-  const { porcelain, side, metal, shadowGap, carcass } = materials
+  const { porcelain, side, metal, shadowGap } = materials
   const W = d.overallWidth * SCALE, D = d.overallDepth * SCALE, H = d.overallHeight * SCALE
   const T = Math.max(.035, d.porcelainThickness * SCALE)
   const leftRim = g.edgeLeft * SCALE, rightRim = g.edgeRight * SCALE
@@ -339,7 +339,6 @@ function SinkModel({ g, materials, technical }: { g: SinkGeometry; materials: Ma
     basinRightX, -T, basinBackZ, basinRightX + T, -T, basinBackZ, basinRightX + T, -T, basinFrontZ, basinRightX, -T, basinFrontZ,
     basinRightX, rearFloorY, basinBackZ, basinRightX + T, rearFloorY, basinBackZ, basinRightX + T, frontFloorY, basinFrontZ, basinRightX, frontFloorY, basinFrontZ,
   ]
-  const drawerWidth = (d.drawerAutoWidth ? d.overallWidth : d.drawerWidth) * SCALE
   const eachBasinW = g.basins[0].width
   // The concealed-drain lid always runs the full internal width of each basin.
   const coverWidth3d = eachBasinW * SCALE
@@ -356,7 +355,6 @@ function SinkModel({ g, materials, technical }: { g: SinkGeometry; materials: Ma
   const holesPerBasin = Math.max(1, Math.round(d.tapHoleCount))
   const spoutIndex = Math.floor((holesPerBasin - 1) / 2)
   const gap = .004
-  let drawerTop = -H - d.drawerTopGap * SCALE
   const e = technical
 
   return <group>
@@ -400,15 +398,91 @@ function SinkModel({ g, materials, technical }: { g: SinkGeometry; materials: Ma
     })}
     {d.tapType === 'Wall Mounted' && !e && g.tapHoles.map((hole, index) => <Tap key={index} x={(hole.x - d.overallWidth / 2) * SCALE} z={backZ} wall spoutReach={rearRim + 90 * SCALE} metal={metal} />)}
 
-    {d.drawersEnabled && d.drawerHeights.slice(0, d.drawerCount).map((heightMm, index) => {
-      const drawerH = heightMm * SCALE
-      const y = drawerTop - drawerH / 2
-      drawerTop -= drawerH + d.drawerGap * SCALE
-      return <group key={index}>
-        <Box size={[drawerWidth, drawerH - gap, d.drawerDepth * SCALE - T]} position={[0, y, frontZ - T - (d.drawerDepth * SCALE - T) / 2]} material={e ? carcass : d.vanityCladding ? porcelain : carcass} edges={e} />
-        <Box size={[drawerWidth, drawerH - gap, T]} position={[0, y, frontZ + .006]} material={porcelain} edges={e} />
-      </group>
-    })}
+    {d.drawersEnabled && <Vanity g={g} materials={materials} technical={e} />}
+  </group>
+}
+
+/** Push-to-open, soft-close drawer: eases open or closed when clicked. */
+function Drawer({ index, y, height, innerWidth, depth, frontZ, T, open, onToggle, materials, trayMaterials, technical }: {
+  index: number; y: number; height: number; innerWidth: number; depth: number; frontZ: number; T: number; open: boolean
+  onToggle: (index: number) => void; materials: Materials; trayMaterials: { bottom: Material; sides: Material }; technical: boolean
+}) {
+  const group = useRef<Group>(null)
+  const { invalidate, gl } = useThree()
+  const travel = Math.max(0, depth - T) * .72
+  /** 3 mm shadow gap around each handle-less front. */
+  const gap = 3 * SCALE
+  useFrame((_, delta) => {
+    const g = group.current
+    if (!g) return
+    const target = open ? travel : 0
+    const diff = target - g.position.z
+    if (Math.abs(diff) < .0005) { g.position.z = target; return }
+    // Soft-close style ease: fast start, gentle stop.
+    g.position.z += diff * Math.min(1, delta * 7)
+    invalidate()
+  })
+  useEffect(() => { invalidate() }, [open, invalidate])
+  const click = (event: ThreeEvent<MouseEvent>) => {
+    event.stopPropagation()
+    if (event.delta > 4) return // ignore orbit drags
+    onToggle(index)
+  }
+  const trayDepth = Math.max(.05, depth - T - .06)
+  const trayH = Math.max(.04, height * .62)
+  const trayW = innerWidth - .05
+  const trayBottomY = y - height / 2 + .03
+  const trayZ = frontZ - T - trayDepth / 2 - .005
+  const wall = .012
+  return <group ref={group} onClick={click}
+    onPointerOver={(event) => { event.stopPropagation(); gl.domElement.style.cursor = 'pointer' }}
+    onPointerOut={() => { gl.domElement.style.cursor = '' }}>
+    <Box size={[innerWidth - gap * 2, height - gap, T]} position={[0, y, frontZ - T / 2]} material={materials.porcelain} edges={technical} />
+    <Box size={[trayW, wall, trayDepth]} position={[0, trayBottomY, trayZ]} material={trayMaterials.bottom} />
+    <Box size={[wall, trayH, trayDepth]} position={[-trayW / 2 + wall / 2, trayBottomY + trayH / 2, trayZ]} material={trayMaterials.sides} />
+    <Box size={[wall, trayH, trayDepth]} position={[trayW / 2 - wall / 2, trayBottomY + trayH / 2, trayZ]} material={trayMaterials.sides} />
+    <Box size={[trayW, trayH, wall]} position={[0, trayBottomY + trayH / 2, trayZ - trayDepth / 2 + wall / 2]} material={trayMaterials.sides} />
+  </group>
+}
+
+/**
+ * Wall-hung vanity: porcelain-clad sides and underside, handle-less
+ * push-to-open drawers that open on click to show the drawer box.
+ */
+function Vanity({ g, materials, technical }: { g: SinkGeometry; materials: Materials; technical: boolean }) {
+  const d = g.design
+  const [openIndex, setOpenIndex] = useState<number | null>(null)
+  const trayMaterials = useMemo(() => ({
+    bottom: new MeshStandardMaterial({ color: '#d8d2c8', roughness: .7 }),
+    sides: new MeshStandardMaterial({ color: '#8e8c88', roughness: .38, metalness: .7 }),
+  }), [])
+  useEffect(() => () => { trayMaterials.bottom.dispose(); trayMaterials.sides.dispose() }, [trayMaterials])
+  const T = Math.max(.035, d.porcelainThickness * SCALE)
+  const H = d.overallHeight * SCALE
+  const D = d.overallDepth * SCALE
+  const frontZ = D / 2
+  const width = g.drawerWidth * SCALE
+  const depth = Math.min(d.drawerDepth, d.overallDepth) * SCALE
+  const heights = d.drawerHeights.slice(0, d.drawerCount).map((h) => h * SCALE)
+  const topGap = d.drawerTopGap * SCALE
+  const between = d.drawerGap * SCALE
+  const bodyH = heights.reduce((sum, h) => sum + h, 0) + between * Math.max(0, heights.length - 1)
+  const top = -H - topGap
+  const centreY = top - bodyH / 2
+  const backZ = frontZ - depth
+  const innerWidth = width - T * 2
+  let cursor = top
+  const rows = heights.map((h) => { const y = cursor - h / 2; cursor -= h + between; return { y, h } })
+  const clad = technical ? materials.carcass : materials.porcelain
+  return <group>
+    {/* Porcelain-clad sides run the full depth; the underside is clad as the unit is wall-hung. */}
+    <Box size={[T, bodyH, depth]} position={[-width / 2 + T / 2, centreY, frontZ - depth / 2]} material={clad} edges={technical} />
+    <Box size={[T, bodyH, depth]} position={[width / 2 - T / 2, centreY, frontZ - depth / 2]} material={clad} edges={technical} />
+    <Box size={[width, T, depth]} position={[0, top - bodyH - T / 2, frontZ - depth / 2]} material={clad} edges={technical} />
+    <Box size={[innerWidth, bodyH, T / 2]} position={[0, centreY, backZ + T / 4]} material={materials.carcass} />
+    {topGap > 0 && <Box size={[width, topGap, depth]} position={[0, top + topGap / 2, frontZ - depth / 2]} material={materials.shadowGap} />}
+    {rows.map((row, index) => <Drawer key={index} index={index} y={row.y} height={row.h} innerWidth={innerWidth} depth={depth} frontZ={frontZ} T={T}
+      open={openIndex === index} onToggle={(i) => setOpenIndex((current) => current === i ? null : i)} materials={materials} trayMaterials={trayMaterials} technical={technical} />)}
   </group>
 }
 
@@ -541,7 +615,7 @@ export function ThreeDPreview({ g, onCanvas }: { g: SinkGeometry; onCanvas?: (ca
         <option>Plain white</option></select>
       </label>}
     </div>
-    <div className="view-3d-help">{realistic ? `Visual only · ${d.finish.toLowerCase()} finish · ` : ''}Drag to rotate · Wheel to zoom</div>
+    <div className="view-3d-help">{realistic ? `Visual only · ${d.finish.toLowerCase()} finish · ` : ''}{d.drawersEnabled ? 'Click a drawer to open · ' : ''}Drag to rotate · Wheel to zoom</div>
     {d.baseType === 'Sloped Front to Back' && <div className="fall-3d-indicator"><span>Base fall</span><strong>{Math.round(calculatedFall)} mm {fallDirection === 'level' ? 'level' : `to ${fallDirection}`}</strong></div>}
     <Canvas shadows={{ type: PCFShadowMap }} dpr={[1, 2]} frameloop="demand" gl={{ antialias: true, preserveDrawingBuffer: true }} camera={{ fov: 32, near: .01, far: 120 }} onCreated={({ gl }) => onCanvas?.(gl.domElement)} fallback={<div className="webgl-fallback">3D preview is unavailable in this browser.</div>}>
       <color attach="background" args={[realistic ? '#cfc8bd' : '#f3f3ef']} />
