@@ -90,6 +90,7 @@ export interface SinkDesign {
   drainOffsetBack: number
   drainOffsetLeft: number
   centreDrainAutomatically: boolean
+  /** Legacy: the concealed-drain lid now always runs the full internal width. */
   coverPlateWidth: number
   coverPlateDepth: number
   coverPlateFullWidth: boolean

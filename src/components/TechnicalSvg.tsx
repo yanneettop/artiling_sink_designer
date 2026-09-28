@@ -57,9 +57,8 @@ function DrainSymbol({ g, sx, sy, x, y }: { g: SinkGeometry; sx: number; sy: num
   const drainWidth = Math.min(basinW * sx - 12, d.drainLength * sx)
   const height = Math.max(4, d.drainWidth * sy)
   if (d.drainType === 'Linear') return <rect x={x - drainWidth / 2} y={y - height / 2} width={drainWidth} height={height} fill={INK} rx="1" />
-  const coverWidth = d.coverPlateFullWidth
-    ? basinW * sx
-    : Math.min(basinW * sx, d.coverPlateWidth * sx)
+  // The concealed-drain lid runs the full internal width of the basin.
+  const coverWidth = basinW * sx
   const coverH = Math.max(7, d.coverPlateDepth * sy)
   return <g>
     <rect x={x - coverWidth / 2} y={y - coverH / 2} width={coverWidth} height={coverH} fill={CUT} stroke={INK} strokeWidth="0.8" />
@@ -119,7 +118,7 @@ export function TopView({ g, compact = false, showDimensions = !compact, svgRef 
         textAnchor="middle"
         dominantBaseline={d.drainType === 'Concealed Linear' ? 'middle' : undefined}
         className="technical-label"
-      >{d.drainType === 'Circular' ? 'ROUND' : d.drainType === 'Linear' ? 'LINEAR' : 'CONCEALED'} DRAIN{d.drainType === 'Concealed Linear' && d.coverPlateFullWidth && g.basins.length === 1 ? ' / FULL WIDTH COVER' : ''}</text>
+      >{d.drainType === 'Circular' ? 'ROUND' : d.drainType === 'Linear' ? 'LINEAR' : 'CONCEALED'} DRAIN{d.drainType === 'Concealed Linear' && g.basins.length === 1 ? ' / FULL WIDTH COVER' : ''}</text>
       {g.basins.length > 1 && !compact && <text x={bx + bw / 2} y={by + bh - 10} textAnchor="middle" className="technical-label">{g.basins.length} BASINS · {Math.round(g.dividerWidth)} mm DIVIDERS</text>}
     </>}
   </ViewFrame>
@@ -178,7 +177,8 @@ export function SideView({ g, compact = false, showDimensions = !compact, svgRef
   const basinFrontX = ox + (g.edgeBack + g.basinDepth) * scale
   const concealedAtRear = d.drainType === 'Concealed Linear' && d.drainPosition === 'Rear'
   const coverSectionWidth = Math.min(g.basinDepth * scale * .45, d.coverPlateDepth * scale)
-  const slopeStartX = concealedAtRear ? basinBackX + coverSectionWidth : basinBackX
+  // One continuous fall across the whole base; the lid sits over it at the rear.
+  const slopeStartX = basinBackX
   const calculatedFall = Math.abs(g.bowlDepthRear - g.bowlDepthFront)
   const fallDirection = g.bowlDepthRear > g.bowlDepthFront ? 'REAR' : g.bowlDepthFront > g.bowlDepthRear ? 'FRONT' : 'LEVEL'
   const slopeSpan = Math.max(1, basinFrontX - slopeStartX)
@@ -204,8 +204,8 @@ export function SideView({ g, compact = false, showDimensions = !compact, svgRef
     <line x1={slopeStartX} y1={rearBaseY} x2={basinFrontX} y2={frontBaseY} stroke={INK} strokeWidth="2" />
     {d.upstandEnabled && <rect x={backX} y={oy - d.backUpstandHeight * scale} width={d.porcelainThickness * scale} height={d.backUpstandHeight * scale} fill="url(#cutHatch)" stroke={INK} strokeWidth="1.5" />}
     {concealedAtRear && <g>
-      <rect x={basinBackX} y={rearBaseY} width={coverSectionWidth} height={Math.max(4, d.porcelainThickness * scale)} fill={CUT} stroke={INK} strokeWidth="1" />
-      {(!compact || showDimensions) && <text x={basinBackX + coverSectionWidth / 2} y={rearBaseY - 8} textAnchor="middle" className="technical-label">CONCEALED COVER</text>}
+      <rect x={basinBackX} y={floorYAt(basinBackX + coverSectionWidth) - Math.max(4, d.porcelainThickness * scale)} width={coverSectionWidth} height={Math.max(4, d.porcelainThickness * scale)} fill={CUT} stroke={INK} strokeWidth="1" />
+      {(!compact || showDimensions) && <text x={basinBackX + coverSectionWidth / 2} y={floorYAt(basinBackX + coverSectionWidth) - Math.max(4, d.porcelainThickness * scale) - 8} textAnchor="middle" className="technical-label">CONCEALED COVER</text>}
     </g>}
     {d.drainPosition === 'Rear' && d.drainType !== 'Concealed Linear' && <rect x={basinBackX} y={rearBaseY - 4} width={Math.max(12, d.drainWidth * scale)} height="7" fill={INK} />}
     {showDimensions && <>
@@ -328,7 +328,7 @@ export function ClientPreview({ g, svgRef }: { g: SinkGeometry; svgRef?: Ref<SVG
     <g className="client-spec" transform="translate(780 572)">
       <text className="heading">FITTINGS</text>
       <text y="25">DRAIN</text><text x="272" y="25" textAnchor="end" className="value">{d.drainType === 'Circular' ? 'Round' : d.drainType === 'Linear' ? 'Exposed linear' : 'Concealed linear'}{d.drainType === 'Concealed Linear' ? ' / Rear' : ` / ${d.drainPosition}`}{d.overflow ? ' + overflow' : ''}</text>
-      <text y="48">COVER</text><text x="272" y="48" textAnchor="end" className="value">{d.drainType === 'Concealed Linear' ? `${d.coverPlateFullWidth ? 'Full width' : `${d.coverPlateWidth} mm`} / ${d.coverPlateDepth} D` : 'N/A'}</text>
+      <text y="48">COVER</text><text x="272" y="48" textAnchor="end" className="value">{d.drainType === 'Concealed Linear' ? `Full width / ${d.coverPlateDepth} D` : 'N/A'}</text>
       <text y="71">TAP</text><text x="272" y="71" textAnchor="end" className="value">{d.tapType}{d.tapType === 'Deck Mounted' ? ` / ${g.tapHoles.length} hole${g.tapHoles.length > 1 ? 's' : ''}` : ''}</text>
       <text y="94">BASE</text><text x="272" y="94" textAnchor="end" className="value">{fallDirection === 'level' ? 'Flat' : `${Math.round(calculatedFall)} mm fall to ${fallDirection}`}</text>
       <text y="117">VANITY</text><text x="272" y="117" textAnchor="end" className="value">{[d.drawersEnabled && `${d.drawerCount} drawers`, d.vanityCladding && 'clad', d.shelfCount > 0 && `${d.shelfCount} shelf`, d.upstandEnabled && 'upstand'].filter(Boolean).join(' / ') || 'Not included'}</text>

@@ -45,7 +45,7 @@ const SECTION_FIELDS: Record<SectionKey, string[]> = {
   material: ['material-tbc', 'material-cost', 'flag-Difficult porcelain'],
   service: ['delivery-manual', 'installation-manual', 'wall-install'],
   commercial: ['allowance', 'flag-Specialist reinforcement', 'flag-Complex mounting', 'flag-Non-standard fabrication'],
-  detail: ['porcelainThickness', 'leftRimWidth', 'rightRimWidth', 'frontRimWidth', 'rearRimWidth', 'rimWidthTotal', 'rimDepthTotal', 'shallowBowlDepth', 'baseFall', 'rearBowlDepth', 'frontBowlDepth', 'drainDiameter', 'drainOffsetLeft', 'drainLength', 'drainOffsetBack', 'coverPlateWidth', 'coverPlateDepth', 'tapHoleDiameter', 'drawerWidth', 'drawerDepth', 'fall-front'],
+  detail: ['porcelainThickness', 'leftRimWidth', 'rightRimWidth', 'frontRimWidth', 'rearRimWidth', 'rimWidthTotal', 'rimDepthTotal', 'shallowBowlDepth', 'baseFall', 'rearBowlDepth', 'frontBowlDepth', 'drainDiameter', 'drainOffsetLeft', 'drainLength', 'drainOffsetBack', 'coverPlateDepth', 'tapHoleDiameter', 'drawerWidth', 'drawerDepth', 'fall-front'],
 }
 
 const plural = (count: number, word: string, many = `${word}s`) => `${count} ${count === 1 ? word : many}`
@@ -111,7 +111,7 @@ export function ParameterPanel({ design: d, geometry: g, errors, price, warnings
       <Section step="2" title="Construction" summary={constructionSummary} open={open.construction} onToggle={() => toggle('construction')} flagged={flag('construction')}>
         <Segmented label="Basins" value={d.basinCount} options={[1, 2, 3]} onChange={set('basinCount')} hint={d.basinCount > 1 ? `+${rate('additionalBasin')} each after the first` : undefined} />
         {errors.basinCount && <p className="inline-warning level-error">{errors.basinCount}</p>}
-        {!errors.basinCount && (errors.drainLength || errors.coverPlateWidth || errors.drainDiameter) && <p className="inline-warning level-error">Drain no longer fits each basin ({Math.round(g.basins[0].width)} mm). Adjust it under Fabrication detail.</p>}
+        {!errors.basinCount && (errors.drainLength || errors.drainDiameter) && <p className="inline-warning level-error">Drain no longer fits each basin ({Math.round(g.basins[0].width)} mm). Adjust it under Fabrication detail.</p>}
         <Segmented label="Mounting" value={d.mountingType} options={MOUNTING_TYPES} onChange={set('mountingType')} labels={{ 'Wall Mounted': 'Wall-mounted', Supported: 'Supported' }} hint={d.mountingType === 'Wall Mounted' ? `Support allowance +${rate('wallMountedSupport')}` : d.mountingType === 'Supported' ? 'Sits on a vanity or countertop' : undefined} />
         <Segmented label="Shape" value={d.shapeType} options={SHAPE_TYPES} onChange={set('shapeType')} labels={{ Irregular: 'Irregular / polygonal' }} hint={d.shapeType === 'Irregular' ? `+${rate('irregularGeometry')} · manual review` : undefined} />
         <SelectField label="Drain" value={d.drainType} options={DRAIN_TYPES} onChange={set('drainType')} labels={{ 'Concealed Linear': 'Concealed linear (rear)', Circular: 'Round', Linear: 'Exposed linear' }} />
@@ -208,13 +208,11 @@ export function ParameterPanel({ design: d, geometry: g, errors, price, warnings
           </div>
           {d.drainType === 'Linear' && d.drainPosition === 'Rear' && <NumberField label="From basin rear wall" value={d.drainOffsetBack} suffix="mm" {...INPUT.fitting} onChange={set('drainOffsetBack')} error={errors.drainOffsetBack} />}
           {d.drainType === 'Concealed Linear' && <>
-            <Toggle label="Cover full basin width" checked={d.coverPlateFullWidth} onChange={set('coverPlateFullWidth')} />
             <div className="field-grid">
-              {!d.coverPlateFullWidth && <NumberField label="Cover plate width" value={d.coverPlateWidth} suffix="mm" {...INPUT.fitting} onChange={set('coverPlateWidth')} error={errors.coverPlateWidth} />}
               <NumberField label="Cover plate depth" value={d.coverPlateDepth} suffix="mm" {...INPUT.fitting} onChange={set('coverPlateDepth')} error={errors.coverPlateDepth} />
               <NumberField label="Drain gap" value={d.drainGap} suffix="mm" min={0} max={50} onChange={set('drainGap')} />
             </div>
-            <p className="parameter-note">Cover plate sits against the basin rear wall.</p>
+            <p className="parameter-note">Lid runs the full internal width, against the rear wall. The base falls uniformly beneath it.</p>
           </>}
         </>}
 

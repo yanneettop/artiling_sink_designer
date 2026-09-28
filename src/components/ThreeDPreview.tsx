@@ -2,9 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useThree } from '@react-three/fiber'
 import { Edges, Environment, Grid, Lightformer, Line, OrbitControls } from '@react-three/drei'
 import {
-  BoxGeometry, BufferGeometry, CanvasTexture, Float32BufferAttribute, MeshPhysicalMaterial, MeshStandardMaterial,
-  RepeatWrapping, SRGBColorSpace, type Material,
+  BoxGeometry, BufferGeometry, CanvasTexture, ExtrudeGeometry, Float32BufferAttribute, MeshPhysicalMaterial, MeshStandardMaterial,
+  MirroredRepeatWrapping, Path, PCFShadowMap, RepeatWrapping, SRGBColorSpace, Shape, TextureLoader, type Material, type Texture,
 } from 'three'
+import { EffectComposer, N8AO, SMAA, ToneMapping, Vignette } from '@react-three/postprocessing'
+import { ToneMappingMode } from 'postprocessing'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import type { SinkGeometry } from '../lib/sinkGeometry'
 
@@ -15,16 +17,45 @@ type RenderMode = 'realistic' | 'technical'
 const SCALE = 1 / 200
 /** Visual only: height of the sink rim above the floor used to place the room. */
 const RIM_HEIGHT_MM = 860
-/** World size of one porcelain texture tile (2.4 m), so typical sinks show no repeat. */
+/** World size of one procedural texture tile (2.4 m), so typical sinks show no repeat. */
 const TEXTURE_TILE = 2400 * SCALE
+/** Visual only: each slab photo is mapped to a full 3200 × 1600 mm slab so vein scale is true to life. */
+const SLAB_MM = { width: 3200, height: 1600 }
 
-const SURFACES = {
-  'Warm white': { base: '#ebe6de', vein: '', veins: 0, cloud: 0.035 },
-  Calacatta: { base: '#f1eee8', vein: '140,112,76', veins: 9, cloud: 0.04 },
-  Statuario: { base: '#eeefee', vein: '96,100,106', veins: 12, cloud: 0.05 },
-  'Beige stone': { base: '#d9ccb7', vein: '150,126,92', veins: 4, cloud: 0.1 },
+/** Slab photographs from the Artiling tile library (public/slabs). */
+const SLAB_SURFACES = {
+  Statuario: { url: '/slabs/statuario-marble-effect-porcelain-slab.webp', group: 'White marble' },
+  'Calacatta Gold': { url: '/slabs/calacatta-gold.webp', group: 'White marble' },
+  'Calacatta Macchia': { url: '/slabs/calacatta-macchia-marble-effect-porcelain-slab.webp', group: 'White marble' },
+  Arabescato: { url: '/slabs/arabescato-marble-effect-porcelain-slab.webp', group: 'White marble' },
+  'Bianco Carrara': { url: '/slabs/bianco-carrara-marble-effect-porcelain-slab.webp', group: 'White marble' },
+  'Invisible White': { url: '/slabs/invisible-white-marble-effect-porcelain-slab.webp', group: 'White marble' },
+  'Lux Viola': { url: '/slabs/lux-viola-marble-effect-porcelain-slab.webp', group: 'White marble' },
+  'Calacatta Viola': { url: '/slabs/calacatta-viola-marble-effect-porcelain-slab.webp', group: 'White marble' },
+  'Breccia Capraia': { url: '/slabs/breccia-capraia-marble-effect-porcelain-slab.webp', group: 'White marble' },
+  'Taj Mahal': { url: '/slabs/taj-mahal-quartzite-effect-porcelain-slab.webp', group: 'Warm stone' },
+  Patagonia: { url: '/slabs/patagonia-quartzite-effect-porcelain-slab.webp', group: 'Warm stone' },
+  'Ivory Limestone': { url: '/slabs/ivory-limestone.webp', group: 'Warm stone' },
+  'Classic Travertine': { url: '/slabs/classic-travertine.webp', group: 'Warm stone' },
+  'Silver Travertine': { url: '/slabs/silver-travertine.webp', group: 'Warm stone' },
+  Terrazzo: { url: '/slabs/terrazzo.webp', group: 'Warm stone' },
+  'Ceppo di Gre': { url: '/slabs/ceppo-di-gre.webp', group: 'Grey & concrete' },
+  'Pietra Grey': { url: '/slabs/pietra-grey.webp', group: 'Grey & concrete' },
+  'Warm Concrete': { url: '/slabs/warm-concrete.webp', group: 'Grey & concrete' },
+  'Fior di Bosco': { url: '/slabs/fior-di-bosco-marble-effect-porcelain-slab.webp', group: 'Dark' },
+  'Marron Imperial': { url: '/slabs/marron-imperial-marble-effect-porcelain-slab.webp', group: 'Dark' },
+  'Nero Marquina': { url: '/slabs/nero-marquina.webp', group: 'Dark' },
+  'Sahara Noir': { url: '/slabs/sahara-noir-marble-effect-porcelain-slab.webp', group: 'Dark' },
+  'Antique Black': { url: '/slabs/antique-black-gemstone-effect-porcelain-slab.webp', group: 'Dark' },
+  'Blue Onyx': { url: '/slabs/blue-onyx.webp', group: 'Colour' },
+  'Green Onyx': { url: '/slabs/green-onyx.webp', group: 'Colour' },
+  'Verde Alpi': { url: '/slabs/verde-alpi-marble-effect-porcelain-slab.webp', group: 'Colour' },
+  'Rosso Levanto': { url: '/slabs/rosso-levanto-marble-effect-porcelain-slab.webp', group: 'Colour' },
 } as const
-type SurfaceName = keyof typeof SURFACES
+const SURFACE_GROUPS = ['White marble', 'Warm stone', 'Grey & concrete', 'Dark', 'Colour'] as const
+const PLAIN_WHITE = { base: '#ebe6de', vein: '', veins: 0, cloud: 0.035 }
+type SurfaceName = keyof typeof SLAB_SURFACES | 'Plain white'
+const SURFACE_NAMES = [...Object.keys(SLAB_SURFACES), 'Plain white'] as SurfaceName[]
 const SURFACE_KEY = 'artiling-3d-surface'
 
 const technicalPorcelain = '#dedbd4'
@@ -36,13 +67,12 @@ function seeded(seed: number) {
 }
 
 /** Procedural porcelain slab texture. Deterministic per surface so renders are repeatable. */
-function makeSurfaceTexture(name: SurfaceName): CanvasTexture {
-  const spec = SURFACES[name]
+function makeSurfaceTexture(spec: { base: string; vein: string; veins: number; cloud: number }): CanvasTexture {
   const size = 1024
   const canvas = document.createElement('canvas')
   canvas.width = canvas.height = size
   const ctx = canvas.getContext('2d')!
-  const rand = seeded(name.length * 7919 + 17)
+  const rand = seeded(spec.base.length * 7919 + spec.veins * 31 + 17)
   ctx.fillStyle = spec.base
   ctx.fillRect(0, 0, size, size)
   // Soft clouding
@@ -87,6 +117,9 @@ function makeSurfaceTexture(name: SurfaceName): CanvasTexture {
 }
 
 /**
+ * UVs are world coordinates (1 unit = 200 mm); each texture's repeat converts
+ * them to its own physical size, centred on the sink.
+ *
  * Box-project UVs in world space so the slab pattern runs continuously across
  * mitred pieces instead of being stretched onto each face.
  */
@@ -98,8 +131,8 @@ function applyWorldUVs(geometry: BufferGeometry, offset: Vec3) {
     const x = position.getX(i) + offset[0], y = position.getY(i) + offset[1], z = position.getZ(i) + offset[2]
     const nx = Math.abs(normal.getX(i)), ny = Math.abs(normal.getY(i)), nz = Math.abs(normal.getZ(i))
     const [u, v] = ny >= nx && ny >= nz ? [x, z] : nx >= nz ? [z, y] : [x, y]
-    uv[i * 2] = u / TEXTURE_TILE + 0.5
-    uv[i * 2 + 1] = v / TEXTURE_TILE + 0.5
+    uv[i * 2] = u
+    uv[i * 2 + 1] = v
   }
   geometry.setAttribute('uv', new Float32BufferAttribute(uv, 2))
 }
@@ -140,6 +173,35 @@ function SolidMesh({ vertices, material, edges = false }: { vertices: number[]; 
   </mesh>
 }
 
+/**
+ * One-piece top deck with the basin opening(s) cut out, so the rim reads as a
+ * single mitred slab rather than four separate strips.
+ */
+function DeckSlab({ width, depth, thickness, holes, material, edges }: { width: number; depth: number; thickness: number; holes: { x0: number; x1: number; z0: number; z1: number }[]; material: Material; edges: boolean }) {
+  const key = [width, depth, thickness, ...holes.flatMap((h) => [h.x0, h.x1, h.z0, h.z1])].map((n) => n.toFixed(5)).join(',')
+  const geometry = useMemo(() => {
+    // Shape y is world -z; the extrusion becomes world y after rotating onto the deck plane.
+    const shape = new Shape()
+    shape.moveTo(-width / 2, -depth / 2); shape.lineTo(width / 2, -depth / 2); shape.lineTo(width / 2, depth / 2); shape.lineTo(-width / 2, depth / 2); shape.closePath()
+    for (const h of holes) {
+      const hole = new Path()
+      hole.moveTo(h.x0, -h.z1); hole.lineTo(h.x0, -h.z0); hole.lineTo(h.x1, -h.z0); hole.lineTo(h.x1, -h.z1); hole.closePath()
+      shape.holes.push(hole)
+    }
+    const geo = new ExtrudeGeometry(shape, { depth: thickness, bevelEnabled: false })
+    geo.rotateX(-Math.PI / 2)
+    geo.translate(0, -thickness, 0)
+    geo.computeVertexNormals()
+    applyWorldUVs(geo, [0, 0, 0])
+    return geo
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
+  useEffect(() => () => geometry.dispose(), [geometry])
+  return <mesh geometry={geometry} material={material} castShadow receiveShadow>
+    {edges && <Edges threshold={15} color="#595a55" />}
+  </mesh>
+}
+
 function CameraControls({ preset, extent, targetY, realistic }: { preset: ViewPreset; extent: number; targetY: number; realistic: boolean }) {
   const { camera, invalidate, size } = useThree()
   const controls = useRef<OrbitControlsImpl>(null)
@@ -167,9 +229,37 @@ function CameraControls({ preset, extent, targetY, realistic }: { preset: ViewPr
 
 interface Materials { porcelain: Material; side: Material; metal: Material; shadowGap: Material; carcass: Material }
 
+function scaleTexture(texture: Texture, widthUnits: number, heightUnits: number) {
+  texture.repeat.set(1 / widthUnits, 1 / heightUnits)
+  texture.offset.set(.5, .5)
+  texture.needsUpdate = true
+  return texture
+}
+
+/** Loads the selected slab photo, falling back to a plain procedural surface while it loads. */
+function useSurfaceTexture(active: boolean, surface: SurfaceName): Texture | null {
+  const plain = useMemo(() => active ? scaleTexture(makeSurfaceTexture(PLAIN_WHITE), TEXTURE_TILE, TEXTURE_TILE) : null, [active])
+  const [photo, setPhoto] = useState<{ name: SurfaceName; texture: Texture } | null>(null)
+  useEffect(() => {
+    if (!active || surface === 'Plain white') return
+    let cancelled = false
+    new TextureLoader().load(SLAB_SURFACES[surface].url, (texture) => {
+      if (cancelled) { texture.dispose(); return }
+      texture.colorSpace = SRGBColorSpace
+      texture.wrapS = texture.wrapT = MirroredRepeatWrapping
+      texture.anisotropy = 8
+      setPhoto({ name: surface, texture: scaleTexture(texture, SLAB_MM.width * SCALE, SLAB_MM.height * SCALE) })
+    })
+    return () => { cancelled = true }
+  }, [active, surface])
+  useEffect(() => () => photo?.texture.dispose(), [photo])
+  useEffect(() => () => plain?.dispose(), [plain])
+  if (!active) return null
+  return photo && photo.name === surface ? photo.texture : plain
+}
+
 function useMaterials(mode: RenderMode, surface: SurfaceName, finish: string): Materials {
-  const texture = useMemo(() => mode === 'realistic' ? makeSurfaceTexture(surface) : null, [mode, surface])
-  useEffect(() => () => texture?.dispose(), [texture])
+  const texture = useSurfaceTexture(mode === 'realistic', surface)
   const materials = useMemo<Materials>(() => {
     const roughness = finish === 'Polished' ? .16 : finish === 'Textured' ? .82 : .5
     if (mode === 'technical') {
@@ -239,17 +329,21 @@ function SinkModel({ g, materials, technical }: { g: SinkGeometry; materials: Ma
     basinLeftX, rearFloorY, basinBackZ, basinRightX, rearFloorY, basinBackZ, basinRightX, frontFloorY, basinFrontZ, basinLeftX, frontFloorY, basinFrontZ,
     basinLeftX, rearFloorY - T, basinBackZ, basinRightX, rearFloorY - T, basinBackZ, basinRightX, frontFloorY - T, basinFrontZ, basinLeftX, frontFloorY - T, basinFrontZ,
   ]
+  // Inner walls sit under the deck; where a rim is only the porcelain thickness the outer panel is the basin wall.
+  const hasInner = (rim: number) => rim > T + .0005
   const leftWallVertices = [
-    basinLeftX - T, 0, basinBackZ, basinLeftX, 0, basinBackZ, basinLeftX, 0, basinFrontZ, basinLeftX - T, 0, basinFrontZ,
+    basinLeftX - T, -T, basinBackZ, basinLeftX, -T, basinBackZ, basinLeftX, -T, basinFrontZ, basinLeftX - T, -T, basinFrontZ,
     basinLeftX - T, rearFloorY, basinBackZ, basinLeftX, rearFloorY, basinBackZ, basinLeftX, frontFloorY, basinFrontZ, basinLeftX - T, frontFloorY, basinFrontZ,
   ]
   const rightWallVertices = [
-    basinRightX, 0, basinBackZ, basinRightX + T, 0, basinBackZ, basinRightX + T, 0, basinFrontZ, basinRightX, 0, basinFrontZ,
+    basinRightX, -T, basinBackZ, basinRightX + T, -T, basinBackZ, basinRightX + T, -T, basinFrontZ, basinRightX, -T, basinFrontZ,
     basinRightX, rearFloorY, basinBackZ, basinRightX + T, rearFloorY, basinBackZ, basinRightX + T, frontFloorY, basinFrontZ, basinRightX, frontFloorY, basinFrontZ,
   ]
   const drawerWidth = (d.drawerAutoWidth ? d.overallWidth : d.drawerWidth) * SCALE
   const eachBasinW = g.basins[0].width
-  const coverWidth3d = (d.coverPlateFullWidth ? eachBasinW : Math.min(eachBasinW, d.coverPlateWidth)) * SCALE
+  // The concealed-drain lid always runs the full internal width of each basin.
+  const coverWidth3d = eachBasinW * SCALE
+  const deckHoles = g.basins.map((basin) => ({ x0: (basin.x - d.overallWidth / 2) * SCALE, x1: (basin.x + basin.width - d.overallWidth / 2) * SCALE, z0: basinBackZ, z1: basinFrontZ }))
   const drainXs = g.drains.map((drain) => (drain.x - d.overallWidth / 2) * SCALE)
   const drainZ = d.drainPosition === 'Rear' ? basinBackZ + d.drainOffsetBack * SCALE : (basinBackZ + basinFrontZ) / 2
   const drainFloorY = d.drainPosition === 'Rear' ? rearFloorY : (rearFloorY + frontFloorY) / 2
@@ -266,10 +360,7 @@ function SinkModel({ g, materials, technical }: { g: SinkGeometry; materials: Ma
   const e = technical
 
   return <group>
-    <Box size={[leftRim, T, D]} position={[-W / 2 + leftRim / 2, -T / 2, 0]} material={porcelain} edges={e} />
-    <Box size={[rightRim, T, D]} position={[W / 2 - rightRim / 2, -T / 2, 0]} material={porcelain} edges={e} />
-    <Box size={[basinW, T, rearRim]} position={[(leftRim - rightRim) / 2, -T / 2, backZ + rearRim / 2]} material={porcelain} edges={e} />
-    <Box size={[basinW, T, frontRim]} position={[(leftRim - rightRim) / 2, -T / 2, frontZ - frontRim / 2]} material={porcelain} edges={e} />
+    <DeckSlab width={W} depth={D} thickness={T} holes={deckHoles} material={porcelain} edges={e} />
 
     <Box size={[W, H - T, T]} position={[0, -T - (H - T) / 2, frontZ - T / 2]} material={side} edges={e} />
     <Box size={[T, H - T, D - T * 2]} position={[-W / 2 + T / 2, -T - (H - T) / 2, 0]} material={side} edges={e} />
@@ -277,14 +368,14 @@ function SinkModel({ g, materials, technical }: { g: SinkGeometry; materials: Ma
     <Box size={[W, H - T, T]} position={[0, -T - (H - T) / 2, backZ + T / 2]} material={side} edges={e} />
 
     <SolidMesh vertices={floorVertices} material={porcelain} edges={e} />
-    <SolidMesh vertices={leftWallVertices} material={porcelain} edges={e} />
-    <SolidMesh vertices={rightWallVertices} material={porcelain} edges={e} />
-    <Box size={[basinW, Math.max(T, -rearFloorY), T]} position={[(leftRim - rightRim) / 2, rearFloorY / 2, basinBackZ - T / 2]} material={porcelain} edges={e} />
-    <Box size={[basinW, Math.max(T, -frontFloorY), T]} position={[(leftRim - rightRim) / 2, frontFloorY / 2, basinFrontZ + T / 2]} material={porcelain} edges={e} />
+    {hasInner(leftRim) && <SolidMesh vertices={leftWallVertices} material={porcelain} edges={e} />}
+    {hasInner(rightRim) && <SolidMesh vertices={rightWallVertices} material={porcelain} edges={e} />}
+    {hasInner(rearRim) && <Box size={[basinW, Math.max(.001, -rearFloorY - T), T]} position={[(leftRim - rightRim) / 2, (rearFloorY - T) / 2, basinBackZ - T / 2]} material={porcelain} edges={e} />}
+    {hasInner(frontRim) && <Box size={[basinW, Math.max(.001, -frontFloorY - T), T]} position={[(leftRim - rightRim) / 2, (frontFloorY - T) / 2, basinFrontZ + T / 2]} material={porcelain} edges={e} />}
 
     {upstandH > 0 && <Box size={[W, upstandH, T]} position={[0, upstandH / 2, backZ + T / 2]} material={porcelain} edges={e} />}
 
-    {g.basins.slice(1).map((basin, index) => <Box key={`divider-${index}`} size={[g.dividerWidth * SCALE, deepest, basinD]} position={[(basin.x - g.dividerWidth / 2 - d.overallWidth / 2) * SCALE, -deepest / 2, (basinBackZ + basinFrontZ) / 2]} material={porcelain} edges={e} />)}
+    {g.basins.slice(1).map((basin, index) => <Box key={`divider-${index}`} size={[g.dividerWidth * SCALE, Math.max(.001, deepest - T), basinD]} position={[(basin.x - g.dividerWidth / 2 - d.overallWidth / 2) * SCALE, -T - (deepest - T) / 2, (basinBackZ + basinFrontZ) / 2]} material={porcelain} edges={e} />)}
 
     {d.drainType === 'Concealed Linear' && drainXs.map((x, index) => <group key={`cover-${index}`}>
       <Box size={[coverWidth3d, T, coverDepth3d]} position={[x, coverJoinY - T / 2 + .003, basinBackZ + coverDepth3d / 2]} material={porcelain} edges={e} />
@@ -321,10 +412,96 @@ function SinkModel({ g, materials, technical }: { g: SinkGeometry; materials: Ma
   </group>
 }
 
+interface TileSpec {
+  /** Tile size in mm. */
+  tileW: number
+  tileH: number
+  base: string
+  /** Per-tile brightness variation, 0–1. */
+  variation: number
+  vein: string
+  grout: string
+  seed: number
+}
+
+/** Procedural large-format porcelain tiling: 2 × 2 tiles per texture, with grout joints. */
+function makeTileTexture(spec: TileSpec): CanvasTexture {
+  const size = 1024
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = size
+  const ctx = canvas.getContext('2d')!
+  const rand = seeded(spec.seed)
+  const cols = 2, rows = 2
+  const tw = size / cols, th = size / rows
+  const groutPx = Math.max(1.5, 2 / spec.tileW * tw)
+  ctx.fillStyle = spec.grout
+  ctx.fillRect(0, 0, size, size)
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const x = c * tw, y = r * th
+    ctx.save()
+    ctx.beginPath(); ctx.rect(x + groutPx / 2, y + groutPx / 2, tw - groutPx, th - groutPx); ctx.clip()
+    ctx.fillStyle = spec.base
+    ctx.fillRect(x, y, tw, th)
+    const shade = (rand() - .5) * spec.variation
+    ctx.fillStyle = shade > 0 ? `rgba(255,255,255,${shade})` : `rgba(40,32,24,${-shade})`
+    ctx.fillRect(x, y, tw, th)
+    for (let i = 0; i < 70; i++) {
+      const cx = x + rand() * tw, cy = y + rand() * th, rad = 20 + rand() * 90
+      const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, rad)
+      gradient.addColorStop(0, rand() > .5 ? 'rgba(255,255,255,.05)' : 'rgba(60,50,40,.05)')
+      gradient.addColorStop(1, 'rgba(0,0,0,0)')
+      ctx.fillStyle = gradient
+      ctx.fillRect(cx - rad, cy - rad, rad * 2, rad * 2)
+    }
+    if (spec.vein) for (let v = 0; v < 2; v++) {
+      ctx.strokeStyle = `rgba(${spec.vein},.12)`
+      ctx.lineWidth = 1 + rand() * 1.5
+      ctx.beginPath()
+      let px = x - 10, py = y + rand() * th
+      ctx.moveTo(px, py)
+      while (px < x + tw + 10) { px += 8 + rand() * 8; py += (rand() - .5) * 10; ctx.lineTo(px, py) }
+      ctx.stroke()
+    }
+    ctx.restore()
+  }
+  const texture = new CanvasTexture(canvas)
+  texture.colorSpace = SRGBColorSpace
+  texture.wrapS = texture.wrapT = RepeatWrapping
+  texture.anisotropy = 8
+  return texture
+}
+
+const WALL_TILE: TileSpec = { tileW: 1200, tileH: 600, base: '#d8d5cf', variation: .05, vein: '150,138,120', grout: '#b6b1a9', seed: 11 }
+const FLOOR_TILE: TileSpec = { tileW: 1200, tileH: 1200, base: '#8b8378', variation: .08, vein: '70,62,54', grout: '#6c655c', seed: 29 }
+
+/** Bathroom context: tiled back wall and floor, sized in world units (1 = 200 mm). */
 function Room({ backZ, floorY }: { backZ: number; floorY: number }) {
+  const wallW = 40, wallH = 16, floorD = 20
+  const wall = useMemo(() => {
+    const t = makeTileTexture(WALL_TILE)
+    const periodX = WALL_TILE.tileW * 2 * SCALE, periodY = WALL_TILE.tileH * 2 * SCALE
+    t.repeat.set(wallW / periodX, wallH / periodY)
+    // Centre a tile on the sink and start the first course at the floor.
+    t.offset.set(.25 - ((wallW / 2 / periodX) % .5), 0)
+    return t
+  }, [])
+  const floor = useMemo(() => {
+    const t = makeTileTexture(FLOOR_TILE)
+    const period = FLOOR_TILE.tileW * 2 * SCALE
+    t.repeat.set(wallW / period, floorD / period)
+    t.offset.set(.25 - ((wallW / 2 / period) % .5), 0)
+    return t
+  }, [])
+  useEffect(() => () => { wall.dispose(); floor.dispose() }, [wall, floor])
   return <group>
-    <mesh position={[0, floorY + 6, backZ - .001]} receiveShadow><planeGeometry args={[40, 16]} /><meshStandardMaterial color="#cdc5b9" roughness={.96} /></mesh>
-    <mesh position={[0, floorY, backZ + 8]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow><planeGeometry args={[40, 20]} /><meshStandardMaterial color="#a99d8d" roughness={.85} /></mesh>
+    <mesh position={[0, floorY + wallH / 2, backZ - .001]} receiveShadow>
+      <planeGeometry args={[wallW, wallH]} />
+      <meshPhysicalMaterial map={wall} roughness={.55} clearcoat={.1} clearcoatRoughness={.5} />
+    </mesh>
+    <mesh position={[0, floorY, backZ + floorD / 2]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+      <planeGeometry args={[wallW, floorD]} />
+      <meshPhysicalMaterial map={floor} roughness={.42} clearcoat={.25} clearcoatRoughness={.35} />
+    </mesh>
   </group>
 }
 
@@ -332,7 +509,7 @@ export function ThreeDPreview({ g, onCanvas }: { g: SinkGeometry; onCanvas?: (ca
   const [preset, setPreset] = useState<ViewPreset>('perspective')
   const [mode, setMode] = useState<RenderMode>('realistic')
   const [surface, setSurfaceState] = useState<SurfaceName>(() => {
-    try { const saved = localStorage.getItem(SURFACE_KEY); return saved && saved in SURFACES ? saved as SurfaceName : 'Calacatta' } catch { return 'Calacatta' }
+    try { const saved = localStorage.getItem(SURFACE_KEY) as SurfaceName | null; return saved && SURFACE_NAMES.includes(saved) ? saved : 'Statuario' } catch { return 'Statuario' }
   })
   const setSurface = (next: SurfaceName) => { setSurfaceState(next); try { localStorage.setItem(SURFACE_KEY, next) } catch { /* storage unavailable */ } }
   const d = g.design
@@ -358,25 +535,37 @@ export function ThreeDPreview({ g, onCanvas }: { g: SinkGeometry; onCanvas?: (ca
         <button className={!realistic ? 'active' : ''} aria-pressed={!realistic} onClick={() => setMode('technical')}>Technical</button>
       </div>
       {realistic && <label className="surface-select"><span>Surface</span>
-        <select value={surface} onChange={(event) => setSurface(event.target.value as SurfaceName)}>{Object.keys(SURFACES).map((name) => <option key={name}>{name}</option>)}</select>
+        <select value={surface} onChange={(event) => setSurface(event.target.value as SurfaceName)}>{SURFACE_GROUPS.map((group) => <optgroup key={group} label={group}>
+          {(Object.keys(SLAB_SURFACES) as (keyof typeof SLAB_SURFACES)[]).filter((name) => SLAB_SURFACES[name].group === group).map((name) => <option key={name}>{name}</option>)}
+        </optgroup>)}
+        <option>Plain white</option></select>
       </label>}
     </div>
     <div className="view-3d-help">{realistic ? `Visual only · ${d.finish.toLowerCase()} finish · ` : ''}Drag to rotate · Wheel to zoom</div>
     {d.baseType === 'Sloped Front to Back' && <div className="fall-3d-indicator"><span>Base fall</span><strong>{Math.round(calculatedFall)} mm {fallDirection === 'level' ? 'level' : `to ${fallDirection}`}</strong></div>}
-    <Canvas shadows dpr={[1, 2]} frameloop="demand" gl={{ antialias: true, preserveDrawingBuffer: true }} camera={{ fov: 32, near: .01, far: 120 }} onCreated={({ gl }) => onCanvas?.(gl.domElement)} fallback={<div className="webgl-fallback">3D preview is unavailable in this browser.</div>}>
+    <Canvas shadows={{ type: PCFShadowMap }} dpr={[1, 2]} frameloop="demand" gl={{ antialias: true, preserveDrawingBuffer: true }} camera={{ fov: 32, near: .01, far: 120 }} onCreated={({ gl }) => onCanvas?.(gl.domElement)} fallback={<div className="webgl-fallback">3D preview is unavailable in this browser.</div>}>
       <color attach="background" args={[realistic ? '#cfc8bd' : '#f3f3ef']} />
       {realistic ? <>
-        <Environment resolution={256} environmentIntensity={.75}>
-          <color attach="background" args={['#b9b3aa']} />
-          <Lightformer form="rect" intensity={3} position={[0, 6, 3]} rotation={[Math.PI / 2, 0, 0]} scale={[10, 6, 1]} />
-          <Lightformer form="rect" intensity={1.4} position={[-6, 2, 4]} rotation={[0, Math.PI / 3, 0]} scale={[4, 6, 1]} />
-          <Lightformer form="rect" intensity={.8} position={[6, 1, 2]} rotation={[0, -Math.PI / 2.5, 0]} scale={[3, 5, 1]} />
-          <Lightformer form="rect" intensity={.5} color="#f3e6d2" position={[0, -3, 6]} rotation={[-Math.PI / 4, 0, 0]} scale={[10, 3, 1]} />
+        {/* Room-like reflections: soft ceiling light, a window to the left, warm bounce from the floor. */}
+        <Environment resolution={512} environmentIntensity={1.15}>
+          <color attach="background" args={['#a8a198']} />
+          <Lightformer form="rect" intensity={2.2} position={[0, 7, 2]} rotation={[Math.PI / 2, 0, 0]} scale={[8, 5, 1]} />
+          <Lightformer form="rect" intensity={5} color="#fffaf4" position={[-9, 3, 3]} rotation={[0, Math.PI / 2, 0]} scale={[5, 7, 1]} />
+          <Lightformer form="rect" intensity={.9} position={[8, 2, 4]} rotation={[0, -Math.PI / 2, 0]} scale={[4, 5, 1]} />
+          <Lightformer form="rect" intensity={.6} color="#e6ddd1" position={[0, -4, 5]} rotation={[-Math.PI / 2, 0, 0]} scale={[12, 6, 1]} />
+          <Lightformer form="rect" intensity={.7} position={[0, 2, 10]} rotation={[0, Math.PI, 0]} scale={[10, 5, 1]} />
         </Environment>
-        <ambientLight intensity={.12} />
-        <directionalLight position={[1.6, 10, 3.6]} intensity={2.1} castShadow shadow-mapSize={[2048, 2048]} shadow-bias={-.0003} shadow-normalBias={.02} shadow-radius={7}
-          shadow-camera-left={-shadowSpan} shadow-camera-right={shadowSpan} shadow-camera-top={shadowSpan} shadow-camera-bottom={-shadowSpan} shadow-camera-near={.5} shadow-camera-far={30} />
+        <hemisphereLight args={['#fbf6ef', '#8a8176', .55]} />
+        {/* Soft daylight from a window upper-left. */}
+        <directionalLight position={[-5.5, 8, 5]} intensity={3.2} color="#fff8f1" castShadow shadow-mapSize={[2048, 2048]} shadow-bias={-.0003} shadow-normalBias={.02} shadow-radius={9} shadow-blurSamples={16}
+          shadow-camera-left={-shadowSpan} shadow-camera-right={shadowSpan} shadow-camera-top={shadowSpan} shadow-camera-bottom={-shadowSpan} shadow-camera-near={.5} shadow-camera-far={40} />
         <Room backZ={backZ} floorY={floorY} />
+        <EffectComposer multisampling={0} enableNormalPass={false}>
+          <N8AO aoRadius={.6} distanceFalloff={1} intensity={1.8} quality="medium" halfRes />
+          <SMAA />
+          <ToneMapping mode={ToneMappingMode.NEUTRAL} />
+          <Vignette offset={.4} darkness={.28} />
+        </EffectComposer>
       </> : <>
         <ambientLight intensity={1.5} />
         <directionalLight position={[6, 9, 7]} intensity={2.4} castShadow shadow-mapSize={[1024, 1024]} />

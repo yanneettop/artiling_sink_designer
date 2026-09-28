@@ -53,7 +53,6 @@ export function validateGeometry(g: SinkGeometry): ValidationErrors {
     if (d.drainType === 'Linear' && (d.drainOffsetBack < 0 || d.drainOffsetBack + d.drainWidth > g.basinDepth)) set('drainOffsetBack', 'Drain must sit inside the basin depth.')
   }
   if (d.drainType === 'Concealed Linear') {
-    if (!d.coverPlateFullWidth && d.coverPlateWidth > eachBasin) set('coverPlateWidth', 'Cover plate must fit within the basin.')
     if (d.coverPlateDepth <= 0 || d.coverPlateDepth >= g.basinDepth) set('coverPlateDepth', 'Cover plate must be shallower than the basin opening.')
   }
 
