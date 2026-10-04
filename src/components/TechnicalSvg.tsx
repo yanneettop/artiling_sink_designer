@@ -104,8 +104,9 @@ export function TopView({ g, compact = false, showDimensions = !compact, svgRef 
     {showDimensions && <>
       <DimensionLine x1={ox} y1={compact ? oy + h : oy} x2={ox + w} y2={compact ? oy + h : oy} label={`${d.overallWidth} mm`} offset={compact ? 35 : -34} compact={compact} />
       <DimensionLine x1={ox} y1={oy} x2={ox} y2={oy + h} label={`${d.overallDepth} mm`} offset={compact ? -24 : -45} vertical compact={compact} />
-      <DimensionLine x1={bx} y1={by + bh} x2={bx + g.basins[0].width * scale} y2={by + bh} label={`${Math.round(g.basins[0].width)} mm`} offset={compact ? 18 : 34} compact={compact} />
-      <DimensionLine x1={bx + bw} y1={by} x2={bx + bw} y2={by + bh} label={`${Math.round(g.basinDepth)} mm`} offset={compact ? 18 : 35} vertical compact={compact} />
+      {/* Compact sheets keep basin dimensions inside the opening so they never sit on the rim lines. */}
+      <DimensionLine x1={bx} y1={by + bh} x2={bx + g.basins[0].width * scale} y2={by + bh} label={`${Math.round(g.basins[0].width)} mm`} offset={compact ? -16 : 34} compact={compact} />
+      <DimensionLine x1={bx + bw} y1={by} x2={bx + bw} y2={by + bh} label={`${Math.round(g.basinDepth)} mm`} offset={compact ? -18 : 35} vertical compact={compact} />
       {!compact && <>
         <DimensionLine x1={ox} y1={oy + h} x2={bx} y2={oy + h} label={`${Math.round(g.edgeLeft)} mm`} offset={55} compact />
         <DimensionLine x1={bx + bw} y1={oy + h} x2={ox + w} y2={oy + h} label={`${Math.round(g.edgeRight)} mm`} offset={55} compact />
@@ -156,7 +157,8 @@ export function FrontView({ g, compact = false, showDimensions = !compact, svgRe
       </>}
     </g>)}
     {showDimensions && <>
-      <DimensionLine x1={ox} y1={compact ? oy + h : oy} x2={ox + w} y2={compact ? oy + h : oy} label={`${d.overallWidth} mm`} offset={compact ? 25 : -36} compact={compact} />
+      {/* Compact drawings skip the slab width when the drawer dimension below already states it. */}
+      {!(compact && d.drawersEnabled && drawerWidthMm === d.overallWidth) && <DimensionLine x1={ox} y1={compact ? oy + h : oy} x2={ox + w} y2={compact ? oy + h : oy} label={`${d.overallWidth} mm`} offset={compact ? 25 : -36} compact={compact} />}
       <DimensionLine x1={ox} y1={oy} x2={ox} y2={oy + h} label={`${d.overallHeight} mm`} offset={compact ? -25 : -45} vertical compact={compact} />
       {d.drawersEnabled && renderedDrawers.length > 0 && <DimensionLine x1={drawerX} y1={renderedDrawers.at(-1)!.y + renderedDrawers.at(-1)!.scaledHeight} x2={drawerX + drawerW} y2={renderedDrawers.at(-1)!.y + renderedDrawers.at(-1)!.scaledHeight} label={`${drawerWidthMm} mm`} offset={28} />}
     </>}
@@ -203,32 +205,43 @@ export function SideView({ g, compact = false, showDimensions = !compact, svgRef
     <line x1={basinFrontX} y1={oy} x2={frontX} y2={oy} stroke={INK} strokeWidth="2" />
     <line x1={slopeStartX} y1={rearBaseY} x2={basinFrontX} y2={frontBaseY} stroke={INK} strokeWidth="2" />
     {d.upstandEnabled && <rect x={backX} y={oy - d.backUpstandHeight * scale} width={d.porcelainThickness * scale} height={d.backUpstandHeight * scale} fill="url(#cutHatch)" stroke={INK} strokeWidth="1.5" />}
-    {concealedAtRear && <g>
-      <rect x={basinBackX} y={floorYAt(basinBackX + coverSectionWidth) - Math.max(4, d.porcelainThickness * scale)} width={coverSectionWidth} height={Math.max(4, d.porcelainThickness * scale)} fill={CUT} stroke={INK} strokeWidth="1" />
-      {(!compact || showDimensions) && <text x={basinBackX + coverSectionWidth / 2} y={floorYAt(basinBackX + coverSectionWidth) - Math.max(4, d.porcelainThickness * scale) - 8} textAnchor="middle" className="technical-label">CONCEALED COVER</text>}
-    </g>}
+    {concealedAtRear && (() => {
+      const coverH = Math.max(4, d.porcelainThickness * scale)
+      const coverTop = floorYAt(basinBackX + coverSectionWidth) - coverH
+      // Label sits above the rim with a leader so it never crosses the depth dimension or the cavity walls.
+      const labelX = basinBackX + coverSectionWidth + (compact ? 22 : 34)
+      const labelY = oy - (compact ? 10 : 14)
+      return <g>
+        <rect x={basinBackX} y={coverTop} width={coverSectionWidth} height={coverH} fill={CUT} stroke={INK} strokeWidth="1" />
+        {(!compact || showDimensions) && <>
+          <polyline points={`${basinBackX + coverSectionWidth / 2},${coverTop} ${basinBackX + coverSectionWidth / 2},${labelY + 4} ${labelX - 3},${labelY + 4}`} fill="none" stroke={MID} strokeWidth=".7" />
+          <text x={labelX} y={labelY + 6} className="technical-label">CONCEALED COVER</text>
+        </>}
+      </g>
+    })()}
     {d.drainPosition === 'Rear' && d.drainType !== 'Concealed Linear' && <rect x={basinBackX} y={rearBaseY - 4} width={Math.max(12, d.drainWidth * scale)} height="7" fill={INK} />}
     {showDimensions && <>
-      <text x={basinBackX + 5} y={oy - 10} className="orientation-label">REAR</text>
-      <text x={basinFrontX - 5} y={oy - 10} textAnchor="end" className="orientation-label">FRONT</text>
-      <DimensionLine x1={backX} y1={oy + h} x2={frontX} y2={oy + h} label={`${d.overallDepth} mm`} offset={compact ? 25 : 42} compact={compact} />
+      <text x={backX} y={oy + h + 14} className="orientation-label">REAR</text>
+      <text x={frontX} y={oy + h + 14} textAnchor="end" className="orientation-label">FRONT</text>
+      <DimensionLine x1={backX} y1={oy + h} x2={frontX} y2={oy + h} label={`${d.overallDepth} mm`} offset={compact ? 30 : 42} compact={compact} />
       <DimensionLine x1={frontX} y1={oy} x2={frontX} y2={oy + h} label={`${d.overallHeight} mm`} offset={compact ? 27 : 52} vertical compact={compact} />
-      <DimensionLine x1={basinBackX} y1={innerTop} x2={basinBackX} y2={rearBaseY} label={`${Math.round(g.bowlDepthRear)} mm`} offset={compact ? 17 : 28} vertical compact={compact} />
-      <DimensionLine x1={basinFrontX} y1={innerTop} x2={basinFrontX} y2={frontBaseY} label={`${Math.round(g.bowlDepthFront)} mm`} offset={compact ? -17 : -28} vertical compact={compact} />
+      {/* Compact sheets dimension the bowl depths through the rims, leaving the cavity clear. */}
+      <DimensionLine x1={basinBackX} y1={innerTop} x2={basinBackX} y2={rearBaseY} label={`${Math.round(g.bowlDepthRear)} mm`} offset={compact ? -16 : 28} vertical compact={compact} />
+      <DimensionLine x1={basinFrontX} y1={innerTop} x2={basinFrontX} y2={frontBaseY} label={`${Math.round(g.bowlDepthFront)} mm`} offset={compact ? 16 : -28} vertical compact={compact} />
       {d.upstandEnabled && <DimensionLine x1={backX} y1={oy - d.backUpstandHeight * scale} x2={backX} y2={oy} label={`${d.backUpstandHeight} mm`} offset={-38} vertical />}
       {d.baseType === 'Flat' || fallDirection === 'LEVEL'
-        ? <text x={(basinBackX + basinFrontX) / 2} y={(rearBaseY + frontBaseY) / 2 + 22} textAnchor="middle" className="technical-label">FLAT BASE</text>
+        ? <text x={(basinBackX + basinFrontX) / 2} y={(rearBaseY + frontBaseY) / 2 + (compact ? -8 : 22)} textAnchor="middle" className="technical-label">FLAT BASE</text>
         : <g className="fall-callout">
           <line x1={flowStartX} y1={flowStartY} x2={flowEndX} y2={flowEndY} markerEnd="url(#flowArrow)" />
           <text x={(flowStartX + flowEndX) / 2} y={(flowStartY + flowEndY) / 2 - 8} textAnchor="middle">{Math.round(calculatedFall)} mm FALL TO {fallDirection}</text>
           <text x={fallDirection === 'REAR' ? slopeStartX + 5 : basinFrontX - 5} y={(fallDirection === 'REAR' ? rearBaseY : frontBaseY) + 18} textAnchor={fallDirection === 'REAR' ? 'start' : 'end'} className="low-point-label">LOW POINT</text>
         </g>}
-      <text x={ox + 8} y={oy + h - 8} className="technical-label">{d.porcelainThickness} mm PORCELAIN</text>
+      {!compact && <text x={ox + 8} y={oy + h - 8} className="technical-label">{d.porcelainThickness} mm PORCELAIN</text>}
     </>}
   </ViewFrame>
 }
 
-export function AxonometricView({ g, svgRef }: { g: SinkGeometry; svgRef?: Ref<SVGSVGElement> }) {
+export function AxonometricView({ g, svgRef, sheet }: { g: SinkGeometry; svgRef?: Ref<SVGSVGElement>; sheet?: { x: number; y: number; width: number; height: number } }) {
   const d = g.design
   const W = d.overallWidth, D = d.overallDepth, H = d.overallHeight
   // True three-axis projection: width drops to the right while depth rises,
@@ -256,10 +269,20 @@ export function AxonometricView({ g, svgRef }: { g: SinkGeometry; svgRef?: Ref<S
     return points(project([x1, 0, bzB]), project([x2, 0, bzB]), project([x2, 0, bzF]), project([x1, 0, bzF]))
   })
 
-  return <svg ref={svgRef} className="technical-svg axonometric-svg" viewBox="0 0 1000 650" role="img" aria-label={`Axonometric technical view, ${W} by ${D} by ${H} millimetres`}>
+  // On the client sheet the view is nested and cropped tight to the projected shell plus its dimension lines.
+  const shell = [OBL, OBR, OFR, OFL, BBR, BFR, BFL]
+  const pad = 74
+  const minX = Math.min(...shell.map((p) => p.x)) - pad, maxX = Math.max(...shell.map((p) => p.x)) + pad
+  const minY = Math.min(...shell.map((p) => p.y)) - pad, maxY = Math.max(...shell.map((p) => p.y)) + pad
+  const frame = sheet
+    ? { ...sheet, viewBox: `${minX} ${minY} ${maxX - minX} ${maxY - minY}`, className: 'axonometric-svg sheet-axonometric' }
+    : { viewBox: '0 0 1000 650', className: 'technical-svg axonometric-svg' }
+  return <svg ref={svgRef} {...frame} role="img" aria-label={`Axonometric technical view, ${W} by ${D} by ${H} millimetres`}>
     <SvgDefs />
-    <text x="32" y="34" className="view-title">AXONOMETRIC VIEW</text>
-    <text x="32" y="53" className="view-subtitle">External shell projection · Internal geometry omitted · Not to scale</text>
+    {!sheet && <>
+      <text x="32" y="34" className="view-title">AXONOMETRIC VIEW</text>
+      <text x="32" y="53" className="view-subtitle">External shell projection · Internal geometry omitted · Not to scale</text>
+    </>}
 
     <polygon className="iso-face-front" points={points(OFL, OFR, BFR, BFL)} fill="#e8e5df" stroke={INK} strokeWidth="1.9" />
     <polygon className="iso-face-right" points={points(OBR, OFR, BFR, BBR)} fill="#cec9c0" stroke={INK} strokeWidth="1.75" />
@@ -267,7 +290,7 @@ export function AxonometricView({ g, svgRef }: { g: SinkGeometry; svgRef?: Ref<S
     <path className="iso-rim" d={rimPath} fill="#f8f7f3" fillRule="evenodd" stroke="none" />
     <polygon points={points(OBL, OBR, OFR, OFL)} fill="none" stroke={INK} strokeWidth="1.8" />
     <polygon className="iso-opening-outline" points={points(IBL, IBR, IFR, IFL)} fill="none" stroke="#77766f" strokeWidth=".85" />
-    {g.basins.length === 1 && <text x={openingCenter.x} y={openingCenter.y + 3} textAnchor="middle" className="iso-opening-label">BASIN OPENING</text>}
+    {g.basins.length === 1 && !sheet && <text x={openingCenter.x} y={openingCenter.y + 3} textAnchor="middle" className="iso-opening-label">BASIN OPENING</text>}
     {dividers.map((divider, index) => <polygon key={index} points={divider} fill="#f8f7f3" stroke="#77766f" strokeWidth=".85" />)}
     {d.tapType === 'Deck Mounted' && taps.map((tap, index) => <ellipse key={index} className="iso-tap-hole" cx={tap.x} cy={tap.y} rx={Math.max(3, d.tapHoleDiameter * scale * .4)} ry={Math.max(1.3, d.tapHoleDiameter * scale * .1)} fill="#f8f7f3" stroke={INK} strokeWidth=".8" />)}
 
@@ -275,67 +298,118 @@ export function AxonometricView({ g, svgRef }: { g: SinkGeometry; svgRef?: Ref<S
     <ProjectedDimension a={OBL} b={OFL} label={`${D} mm  OVERALL DEPTH`} offset={26} />
     <ProjectedDimension a={OBR} b={BBR} label={`${H} mm  OVERALL HEIGHT`} offset={-42} />
 
-    <rect x="100" y="490" width="800" height="72" fill="#fafaf7" stroke={PALE} />
-    <text x="120" y="514" className="schedule-title">KEY DIMENSIONS</text>
-    <g className="iso-levels" transform="translate(120 538)">
-      <text>BASIN OPENING</text><text x="150" className="value">{Math.round(g.basinWidth)} × {Math.round(g.basinDepth)} mm</text>
-      <text x="345">RIMS L / R / F / REAR</text><text x="490" className="value">{d.leftRimWidth} / {d.rightRimWidth} / {d.frontRimWidth} / {d.rearRimWidth} mm</text>
-      <text x="660">PORCELAIN</text><text x="745" className="value">{d.porcelainThickness} mm</text>
-    </g>
-    <text x="958" y="616" textAnchor="end" className="view-subtitle">{d.reference} · AXONOMETRIC PROJECTION</text>
+    {!sheet && <>
+      <rect x="100" y="490" width="800" height="72" fill="#fafaf7" stroke={PALE} />
+      <text x="120" y="514" className="schedule-title">KEY DIMENSIONS</text>
+      <g className="iso-levels" transform="translate(120 538)">
+        <text>BASIN OPENING</text><text x="150" className="value">{Math.round(g.basinWidth)} × {Math.round(g.basinDepth)} mm</text>
+        <text x="345">RIMS L / R / F / REAR</text><text x="490" className="value">{d.leftRimWidth} / {d.rightRimWidth} / {d.frontRimWidth} / {d.rearRimWidth} mm</text>
+        <text x="660">PORCELAIN</text><text x="745" className="value">{d.porcelainThickness} mm</text>
+      </g>
+      <text x="958" y="616" textAnchor="end" className="view-subtitle">{d.reference} · AXONOMETRIC PROJECTION</text>
+    </>}
   </svg>
+}
+
+const clip = (text: string, max: number) => text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text
+
+function SpecRows({ x, y, width, heading, rows }: { x: number; y: number; width: number; heading: string; rows: [string, string][] }) {
+  return <g className="client-spec" transform={`translate(${x} ${y})`}>
+    <text className="heading">{heading}</text>
+    {rows.map(([label, value], index) => <g key={label} transform={`translate(0 ${24 + index * 21})`}>
+      <text>{label}</text>
+      <text x={width} textAnchor="end" className="value">{value}</text>
+      <line x1="0" x2={width} y1="7" y2="7" />
+    </g>)}
+  </g>
 }
 
 export function ClientPreview({ g, svgRef }: { g: SinkGeometry; svgRef?: Ref<SVGSVGElement> }) {
   const d = g.design
   const calculatedFall = Math.abs(g.bowlDepthRear - g.bowlDepthFront)
   const fallDirection = g.bowlDepthRear > g.bowlDepthFront ? 'rear' : g.bowlDepthFront > g.bowlDepthRear ? 'front' : 'level'
-  return <svg ref={svgRef} className="technical-svg client-sheet" viewBox="0 0 1120 790" role="img" aria-label="Client quotation preview">
+  const issued = new Date(d.updatedAt || Date.now()).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+  const material = d.material || (d.materialSupply === 'Client' ? 'Client supplied' : 'Porcelain to be confirmed')
+  const vanity = [d.drawersEnabled && `${d.drawerCount} drawers`, d.vanityCladding && 'porcelain clad', d.shelfCount > 0 && `${d.shelfCount} shelf`, d.upstandEnabled && `${d.backUpstandHeight} mm upstand`].filter(Boolean).join(' / ') || 'Not included'
+  const project = [d.clientName, d.projectName].filter(Boolean).join(' · ') || 'Client not specified'
+  // Grow the compact section to fill its slot: thin slabs get larger, tall basins shrink to fit.
+  const upstand = d.upstandEnabled ? d.backUpstandHeight : 0
+  const sideScale = Math.min(330 / d.overallDepth, 165 / (d.overallHeight + upstand))
+  const sectionBottom = 92 + (d.overallHeight + upstand) * sideScale + 45
+  const sectionScale = Math.min(1.02, 200 / (sectionBottom - 16))
+
+  const construction: [string, string][] = [
+    ['OVERALL SIZE', `${d.overallWidth} × ${d.overallDepth} × ${d.overallHeight} mm`],
+    ['BASIN OPENING', `${Math.round(g.basinWidth)} × ${Math.round(g.basinDepth)} mm`],
+    ['RIMS  L / R / FRONT / REAR', `${d.leftRimWidth} / ${d.rightRimWidth} / ${d.frontRimWidth} / ${d.rearRimWidth} mm`],
+    ['INTERNAL DEPTH  REAR / FRONT', `${Math.round(g.bowlDepthRear)} / ${Math.round(g.bowlDepthFront)} mm`],
+    ['BASE', fallDirection === 'level' ? 'Flat' : `${Math.round(calculatedFall)} mm fall to ${fallDirection}`],
+    ['BASINS / MOUNTING', `${d.basinCount} / ${d.mountingType === 'Wall Mounted' ? 'Wall-mounted' : d.mountingType}`],
+  ]
+  const finish: [string, string][] = [
+    ['MATERIAL', clip(material, 28)],
+    ['FINISH / THICKNESS', `${d.finish} / ${d.porcelainThickness} mm`],
+    ['DRAIN', `${d.drainType === 'Circular' ? 'Round' : d.drainType === 'Linear' ? 'Exposed linear' : 'Concealed linear'} / ${d.drainType === 'Concealed Linear' ? 'Rear' : d.drainPosition}${d.overflow ? ' + overflow' : ''}`],
+    ['DRAIN COVER', d.drainType === 'Concealed Linear' ? `Full width × ${d.coverPlateDepth} mm` : '—'],
+    ['TAP', `${d.tapType}${d.tapType === 'Deck Mounted' ? ` / ${g.tapHoles.length} hole${g.tapHoles.length > 1 ? 's' : ''}` : ''}`],
+    ['VANITY', clip(vanity, 28)],
+  ]
+
+  return <svg ref={svgRef} className="technical-svg client-sheet" viewBox="0 0 1120 790" role="img" aria-label="Client design sheet">
     <SvgDefs />
-    <image href="/assets/artiling-logo.png" x="42" y="24" width="64" height="64" preserveAspectRatio="xMidYMid meet" />
-    <text x="112" y="45" className="client-brand">ARTILING STUDIO</text>
-    <text x="112" y="76" className="client-title">Bespoke porcelain basin</text>
-    <text x="1072" y="43" textAnchor="end" className="client-sheet-reference">{d.reference || 'UNSAVED DESIGN'}</text>
-    <text x="1072" y="68" textAnchor="end" className="client-sheet-project">{d.clientName || 'Client not specified'} / {d.projectName || 'Project not specified'}</text>
-    <line x1="48" x2="1072" y1="96" y2="96" stroke={INK} />
-    <g className="client-meta">
-      <text x="48" y="119">OVERALL SIZE</text><text x="48" y="143" className="value emphasis">{d.overallWidth} × {d.overallDepth} × {d.overallHeight} mm</text>
-      <text x="276" y="119">BASIN OPENING</text><text x="276" y="143" className="value">{Math.round(g.basinWidth)} × {Math.round(g.basinDepth)} mm</text>
-      <text x="493" y="119">INTERNAL DEPTHS</text><text x="493" y="143" className="value">Rear {Math.round(g.bowlDepthRear)} / Front {Math.round(g.bowlDepthFront)} mm</text>
-      <text x="735" y="119">FALL</text><text x="735" y="143" className="value">{fallDirection === 'level' ? 'Flat base' : `${Math.round(calculatedFall)} mm to ${fallDirection}`}</text>
-      <text x="910" y="119">MATERIAL / FINISH</text><text x="910" y="143" className="value">{d.material || (d.materialSupply === 'Client' ? 'Client supplied' : 'Porcelain TBC')} / {d.finish}</text>
-    </g>
-    <line x1="48" x2="1072" y1="160" y2="160" stroke={PALE} />
+    {/* Header */}
+    <image href="/assets/artiling-logo.png" x="42" y="22" width="60" height="60" preserveAspectRatio="xMidYMid meet" />
+    <text x="110" y="42" className="client-brand">ARTILING STUDIO</text>
+    <text x="110" y="72" className="client-title">Bespoke porcelain basin</text>
+    <text x="1072" y="40" textAnchor="end" className="client-sheet-reference">{d.reference || 'UNSAVED DESIGN'}</text>
+    <text x="1072" y="60" textAnchor="end" className="client-sheet-project">{clip(project, 60)}</text>
+    <text x="1072" y="77" textAnchor="end" className="client-sheet-project">{d.overallWidth} × {d.overallDepth} × {d.overallHeight} mm · Issued {issued}</text>
+    <line x1="48" x2="1072" y1="92" y2="92" stroke={INK} strokeWidth="1.2" />
 
-    <g transform="translate(20 168) scale(1.1)"><TopView g={g} compact showDimensions /></g>
-    <g transform="translate(570 168) scale(1.08)"><SideView g={g} compact showDimensions /></g>
-    <line x1="558" x2="558" y1="182" y2="492" stroke={PALE} />
-    <line x1="48" x2="1072" y1="500" y2="500" stroke={PALE} />
+    {/* Row 1: plan and 3D form (front elevation when the design has drawers) */}
+    <g transform="translate(40 98) scale(1.08)"><TopView g={g} compact showDimensions /></g>
+    <line x1="568" x2="568" y1="108" y2="420" stroke={PALE} />
+    {d.drawersEnabled
+      ? <g transform="translate(578 98) scale(1.04)"><FrontView g={g} compact showDimensions /></g>
+      : <>
+        <text x="608" y="128" className="view-title">AXONOMETRIC</text>
+        <text x="608" y="145" className="view-subtitle">Indicative form · not to scale</text>
+        <AxonometricView g={g} sheet={{ x: 584, y: 156, width: 488, height: 264 }} />
+      </>}
+    <line x1="48" x2="1072" y1="430" y2="430" stroke={PALE} />
 
-    <g transform="translate(24 505) scale(.82)"><FrontView g={g} compact showDimensions /></g>
-    <rect x="450" y="516" width="622" height="190" fill="#fafaf7" stroke={PALE} />
-    <text x="470" y="540" className="schedule-title">TECHNICAL SCHEDULE</text>
-    <line x1="470" x2="1052" y1="550" y2="550" stroke={PALE} />
-    <line x1="760" x2="760" y1="550" y2="687" stroke={PALE} />
-    <g className="client-spec" transform="translate(470 572)">
-      <text className="heading">CONSTRUCTION</text>
-      <text y="25">RIMS L / R / F / REAR</text><text x="265" y="25" textAnchor="end" className="value">{d.leftRimWidth} / {d.rightRimWidth} / {d.frontRimWidth} / {d.rearRimWidth} mm</text>
-      <text y="48">PORCELAIN</text><text x="265" y="48" textAnchor="end" className="value">{d.porcelainThickness} mm</text>
-      <text y="71">BASIN OPENING</text><text x="265" y="71" textAnchor="end" className="value">{Math.round(g.basinWidth)} × {Math.round(g.basinDepth)} mm</text>
-      <text y="94">REAR / FRONT DEPTH</text><text x="265" y="94" textAnchor="end" className="value">{Math.round(g.bowlDepthRear)} / {Math.round(g.bowlDepthFront)} mm</text>
-      <text y="117">BASINS / MOUNTING</text><text x="265" y="117" textAnchor="end" className="value">{d.basinCount} / {d.mountingType === 'Wall Mounted' ? 'Wall-mounted' : d.mountingType}</text>
-    </g>
-    <g className="client-spec" transform="translate(780 572)">
-      <text className="heading">FITTINGS</text>
-      <text y="25">DRAIN</text><text x="272" y="25" textAnchor="end" className="value">{d.drainType === 'Circular' ? 'Round' : d.drainType === 'Linear' ? 'Exposed linear' : 'Concealed linear'}{d.drainType === 'Concealed Linear' ? ' / Rear' : ` / ${d.drainPosition}`}{d.overflow ? ' + overflow' : ''}</text>
-      <text y="48">COVER</text><text x="272" y="48" textAnchor="end" className="value">{d.drainType === 'Concealed Linear' ? `Full width / ${d.coverPlateDepth} D` : 'N/A'}</text>
-      <text y="71">TAP</text><text x="272" y="71" textAnchor="end" className="value">{d.tapType}{d.tapType === 'Deck Mounted' ? ` / ${g.tapHoles.length} hole${g.tapHoles.length > 1 ? 's' : ''}` : ''}</text>
-      <text y="94">BASE</text><text x="272" y="94" textAnchor="end" className="value">{fallDirection === 'level' ? 'Flat' : `${Math.round(calculatedFall)} mm fall to ${fallDirection}`}</text>
-      <text y="117">VANITY</text><text x="272" y="117" textAnchor="end" className="value">{[d.drawersEnabled && `${d.drawerCount} drawers`, d.vanityCladding && 'clad', d.shelfCount > 0 && `${d.shelfCount} shelf`, d.upstandEnabled && 'upstand'].filter(Boolean).join(' / ') || 'Not included'}</text>
-    </g>
+    {/* Row 2: section and specification */}
+    <g transform={`translate(40 ${436 - 16 * sectionScale}) scale(${sectionScale})`}><SideView g={g} compact showDimensions /></g>
+    <line x1="512" x2="512" y1="444" y2="628" stroke={PALE} />
+    <text x="528" y="458" className="view-title">SPECIFICATION</text>
+    <SpecRows x={528} y={484} width={258} heading="CONSTRUCTION" rows={construction} />
+    <SpecRows x={810} y={484} width={262} heading="MATERIAL &amp; FITTINGS" rows={finish} />
 
-    <line x1="48" x2="1072" y1="748" y2="748" stroke={INK} />
-    <text x="48" y="771" className="disclaimer">Indicative design drawing. Verify site dimensions, material selection and fabrication details before production.</text>
-    <text x="1072" y="771" textAnchor="end" className="disclaimer">CLIENT PREVIEW / {d.reference}</text>
+    {/* Title block */}
+    <line x1="48" x2="1072" y1="640" y2="640" stroke={INK} strokeWidth="1.2" />
+    <g className="client-notes" transform="translate(48 662)">
+      <text className="heading">NOTES</text>
+      <text y="20">1. All dimensions in millimetres. Drawing not to scale; do not measure from it.</text>
+      <text y="36">2. Indicative design. Site dimensions, porcelain selection and fittings to be verified before production.</text>
+      <text y="52">3. Final slab colour and veining may vary from the drawing and any sample.</text>
+      <text y="68">4. Fabrication begins once this sheet is signed and returned.</text>
+    </g>
+    <g className="title-block">
+      <rect x="640" y="652" width="432" height="104" fill="none" stroke={INK} strokeWidth="1" />
+      <line x1="640" x2="1072" y1="686" y2="686" />
+      <line x1="856" x2="856" y1="652" y2="686" />
+      <line x1="964" x2="964" y1="652" y2="686" />
+      <line x1="856" x2="856" y1="686" y2="756" />
+      <text x="650" y="665" className="label">DRAWING</text><text x="650" y="680" className="value">{d.reference || '—'}</text>
+      <text x="866" y="665" className="label">SCALE</text><text x="866" y="680" className="value">NTS</text>
+      <text x="974" y="665" className="label">SHEET</text><text x="974" y="680" className="value">1 / 1</text>
+      <text x="650" y="700" className="label">CLIENT APPROVAL</text>
+      <line x1="650" x2="844" y1="744" y2="744" className="sign" />
+      <text x="650" y="752" className="hint">Signature</text>
+      <text x="866" y="700" className="label">DATE</text>
+      <line x1="866" x2="1062" y1="744" y2="744" className="sign" />
+    </g>
+    <text x="48" y="774" className="disclaimer">Artiling Studio · artilingstudio.co.uk</text>
+    <text x="1072" y="774" textAnchor="end" className="disclaimer">CLIENT DESIGN SHEET / {d.reference}</text>
   </svg>
 }
