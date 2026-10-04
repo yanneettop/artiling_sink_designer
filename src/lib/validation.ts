@@ -33,14 +33,14 @@ export function validateGeometry(g: SinkGeometry): ValidationErrors {
 
   if (d.overallHeight >= minimumHeight) {
     const max = g.maximumInternalDepth
-    if (d.baseType === 'Flat' || d.fallControl === 'Fall and Low Point') {
+    if (d.baseType === 'Flat' || g.fallToDrain || d.fallControl === 'Fall and Low Point') {
       if (d.shallowBowlDepth < MIN_INTERNAL_DEPTH || d.shallowBowlDepth > max) set('shallowBowlDepth', `Internal depth must be between ${MIN_INTERNAL_DEPTH} and ${max} mm.`)
     }
-    if (d.baseType === 'Sloped Front to Back' && d.fallControl === 'Fall and Low Point') {
+    if (g.fallToDrain || (d.baseType === 'Sloped Front to Back' && d.fallControl === 'Fall and Low Point')) {
       if (d.baseFall < 0) set('baseFall', 'Base fall cannot be negative.')
       else if (d.shallowBowlDepth + d.baseFall > max) set('baseFall', `Deepest point must not exceed ${max} mm.`)
     }
-    if (d.baseType === 'Sloped Front to Back' && d.fallControl === 'Corner Depths') {
+    if (!g.fallToDrain && d.baseType === 'Sloped Front to Back' && d.fallControl === 'Corner Depths') {
       if (d.rearBowlDepth < MIN_INTERNAL_DEPTH || d.rearBowlDepth > max) set('rearBowlDepth', `Rear depth must be between ${MIN_INTERNAL_DEPTH} and ${max} mm.`)
       if (d.frontBowlDepth < MIN_INTERNAL_DEPTH || d.frontBowlDepth > max) set('frontBowlDepth', `Front depth must be between ${MIN_INTERNAL_DEPTH} and ${max} mm.`)
       if (d.rearBowlDepth === d.frontBowlDepth) set('frontBowlDepth', 'Both depths are equal. Use a flat base.')

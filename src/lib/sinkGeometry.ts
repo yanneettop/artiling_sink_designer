@@ -33,6 +33,10 @@ export interface SinkGeometry {
   maximumInternalDepth: number
   bowlDepthFront: number
   bowlDepthRear: number
+  /** True when the floor falls from all four walls to a centre round drain. */
+  fallToDrain: boolean
+  /** Internal depth at the drain, mm. */
+  bowlDepthDrain: number
   drawerWidth: number
 }
 
@@ -78,6 +82,16 @@ export function applyOpeningRules(current: SinkDesign, patch: Partial<SinkDesign
   return next
 }
 
+/** Size and direction of the basin floor fall, for labels and specifications. */
+export function describeFall(g: SinkGeometry): { fall: number; to: 'rear' | 'front' | 'drain' | 'level' } {
+  if (g.fallToDrain) {
+    const fall = Math.round(g.bowlDepthDrain - g.bowlDepthRear)
+    return { fall, to: fall > 0 ? 'drain' : 'level' }
+  }
+  const fall = Math.round(Math.abs(g.bowlDepthRear - g.bowlDepthFront))
+  return { fall, to: g.bowlDepthRear > g.bowlDepthFront ? 'rear' : g.bowlDepthFront > g.bowlDepthRear ? 'front' : 'level' }
+}
+
 export function calculateGeometry(design: SinkDesign): SinkGeometry {
   const edgeLeft = Math.max(design.leftRimWidth, design.porcelainThickness)
   const edgeRight = Math.max(design.rightRimWidth, design.porcelainThickness)
@@ -112,7 +126,12 @@ export function calculateGeometry(design: SinkDesign): SinkGeometry {
   const automaticDepth = clampDepth(design.shallowBowlDepth)
   let bowlDepthFront = automaticDepth
   let bowlDepthRear = automaticDepth
-  if (design.baseType === 'Sloped Front to Back') {
+  // A centre round drain gets a four-way fall: every wall at the shallow depth, the drain lowest.
+  const fallToDrain = design.baseType === 'Sloped Front to Back' && design.drainType === 'Circular' && design.drainPosition === 'Centre'
+  let bowlDepthDrain = automaticDepth
+  if (fallToDrain) {
+    bowlDepthDrain = clampDepth(automaticDepth + design.baseFall)
+  } else if (design.baseType === 'Sloped Front to Back') {
     if (design.fallControl === 'Corner Depths') {
       bowlDepthFront = clampDepth(design.frontBowlDepth)
       bowlDepthRear = clampDepth(design.rearBowlDepth)
@@ -126,6 +145,8 @@ export function calculateGeometry(design: SinkDesign): SinkGeometry {
   return {
     design, basinWidth, basinDepth, edgeLeft, edgeRight, edgeFront, edgeBack, dividerWidth, basins, drains,
     drainX: drains[0].x, drainY, tapHoles, tapX: tapCentres[0] ?? design.overallWidth / 2, tapY, maximumInternalDepth,
-    bowlDepthFront, bowlDepthRear, drawerWidth: design.drawerAutoWidth ? design.overallWidth : design.drawerWidth,
+    bowlDepthFront, bowlDepthRear, fallToDrain,
+    bowlDepthDrain: fallToDrain ? bowlDepthDrain : atRear ? bowlDepthRear : (bowlDepthFront + bowlDepthRear) / 2,
+    drawerWidth: design.drawerAutoWidth ? design.overallWidth : design.drawerWidth,
   }
 }

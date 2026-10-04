@@ -1,5 +1,5 @@
 import type { ReactNode, Ref } from 'react'
-import type { SinkGeometry } from '../lib/sinkGeometry'
+import { describeFall, type SinkGeometry } from '../lib/sinkGeometry'
 
 const INK = '#20211f'
 const MID = '#777871'
@@ -93,6 +93,12 @@ export function TopView({ g, compact = false, showDimensions = !compact, svgRef 
       </g>}
       <rect x={ox} y={oy} width={w} height={h} fill="#fdfdfb" stroke={INK} strokeWidth="2" />
       {g.basins.map((basin, index) => <rect key={index} x={ox + basin.x * scale} y={by} width={basin.width * scale} height={bh} fill="#f7f7f3" stroke={INK} strokeWidth="1.3" />)}
+      {/* Four-way fall: valley lines from each internal corner to the drain. */}
+      {g.fallToDrain && g.basins.map((basin, index) => {
+        const drain = g.drains[index]
+        const corners = [[basin.x, g.edgeBack], [basin.x + basin.width, g.edgeBack], [basin.x + basin.width, g.edgeBack + g.basinDepth], [basin.x, g.edgeBack + g.basinDepth]]
+        return <g key={`fall-${index}`}>{corners.map(([cx, cy], i) => <line key={i} x1={ox + cx * scale} y1={oy + cy * scale} x2={ox + drain.x * scale} y2={oy + drain.y * scale} stroke={MID} strokeWidth=".7" strokeDasharray="3 2" />)}</g>
+      })}
       {d.upstandEnabled && <rect x={ox} y={oy} width={w} height={Math.max(4, d.porcelainThickness * scale)} fill={CUT} stroke={INK} strokeWidth="1" />}
       {g.drains.map((drain, index) => <DrainSymbol key={index} g={g} sx={scale} sy={scale} x={ox + drain.x * scale} y={oy + drain.y * scale} />)}
       {d.tapType === 'Deck Mounted' && g.tapHoles.map((hole, i) => <circle key={i} cx={ox + hole.x * scale} cy={oy + hole.y * scale} r={Math.max(3, d.tapHoleDiameter * scale / 2)} fill="none" stroke={INK} strokeWidth="1.3" />)}
@@ -165,11 +171,22 @@ export function FrontView({ g, compact = false, showDimensions = !compact, svgRe
   </ViewFrame>
 }
 
+/**
+ * Height drawn in section. Tall pedestals are shown broken just below the basin
+ * so the basin stays legible; the height dimension still states the true value.
+ */
+export function sectionShownHeight(g: SinkGeometry): { shown: number; broken: boolean } {
+  const deepest = Math.max(g.bowlDepthRear, g.bowlDepthFront, g.bowlDepthDrain) + g.design.porcelainThickness
+  const broken = g.design.overallHeight > deepest + 260
+  return { shown: broken ? deepest + 120 : g.design.overallHeight, broken }
+}
+
 export function SideView({ g, compact = false, showDimensions = !compact, svgRef }: { g: SinkGeometry; compact?: boolean; showDimensions?: boolean; svgRef?: Ref<SVGSVGElement> }) {
   const d = g.design
-  const totalH = d.overallHeight + (d.upstandEnabled ? d.backUpstandHeight : 0)
+  const { shown, broken } = sectionShownHeight(g)
+  const totalH = shown + (d.upstandEnabled ? d.backUpstandHeight : 0)
   const scale = Math.min((compact ? 330 : 540) / d.overallDepth, (compact ? 165 : 315) / totalH)
-  const w = d.overallDepth * scale, h = d.overallHeight * scale
+  const w = d.overallDepth * scale, h = shown * scale
   const ox = compact ? 75 : 150, oy = compact ? 92 + (d.upstandEnabled ? d.backUpstandHeight * scale : 0) : 130 + (d.upstandEnabled ? d.backUpstandHeight * scale : 0)
   const backX = ox, frontX = ox + w
   const innerTop = oy + d.porcelainThickness * scale
@@ -189,7 +206,19 @@ export function SideView({ g, compact = false, showDimensions = !compact, svgRef
   const flowEndX = fallDirection === 'REAR' ? slopeStartX + slopeSpan * .22 : slopeStartX + slopeSpan * .78
   const flowStartY = floorYAt(flowStartX) - (compact ? 10 : 15)
   const flowEndY = floorYAt(flowEndX) - (compact ? 10 : 15)
-  const cavityPath = `M ${basinBackX} ${oy - 3} L ${basinBackX} ${rearBaseY} L ${slopeStartX} ${rearBaseY} L ${basinFrontX} ${frontBaseY} L ${basinFrontX} ${oy - 3} Z`
+  // Four-way fall: the section cuts through the drain, so the floor dips to it from both walls.
+  const funnel = g.fallToDrain
+  const drainSX = ox + g.drainY * scale
+  const drainBaseY = oy + g.bowlDepthDrain * scale
+  const floorPoints = funnel ? `${basinBackX},${rearBaseY} ${drainSX},${drainBaseY} ${basinFrontX},${frontBaseY}` : `${slopeStartX},${rearBaseY} ${basinFrontX},${frontBaseY}`
+  const cavityPath = `M ${basinBackX} ${oy - 3} L ${basinBackX} ${rearBaseY} L ${floorPoints.split(' ').map((p) => p.replace(',', ' ')).join(' L ')} L ${basinFrontX} ${oy - 3} Z`
+  const funnelArrow = (fromX: number) => {
+    const t = .55
+    const x1 = fromX, x2 = fromX + (drainSX - fromX) * t
+    const yAt = (x: number) => x <= drainSX ? rearBaseY + (x - basinBackX) / Math.max(1, drainSX - basinBackX) * (drainBaseY - rearBaseY) : drainBaseY + (x - drainSX) / Math.max(1, basinFrontX - drainSX) * (frontBaseY - drainBaseY)
+    const lift = compact ? 9 : 14
+    return { x1, y1: yAt(x1) - lift, x2, y2: yAt(x2) - lift }
+  }
   return <ViewFrame svgRef={svgRef} compact={compact} title="SIDE SECTION A-A" subtitle={`${d.overallDepth} × ${d.overallHeight} mm${d.mountingType === 'Wall Mounted' ? ' · wall-mounted' : ''}`} viewBox={compact ? '0 0 470 300' : '0 0 820 530'}>
     {d.mountingType === 'Wall Mounted' && <g>
       <rect x={backX - 16} y={oy - (d.upstandEnabled ? d.backUpstandHeight * scale : 0) - 24} width={14} height={h + (d.upstandEnabled ? d.backUpstandHeight * scale : 0) + 48} fill="url(#cutHatch)" stroke="none" />
@@ -198,12 +227,16 @@ export function SideView({ g, compact = false, showDimensions = !compact, svgRef
     </g>}
     {d.tapType === 'Wall Mounted' && <path d={`M ${backX - 2} ${oy - 26} h ${Math.max(18, g.edgeBack * scale + 10)} v 7`} fill="none" stroke={INK} strokeWidth="3" strokeLinecap="round" />}
     <rect x={ox} y={oy} width={w} height={h} fill="url(#cutHatch)" stroke={INK} strokeWidth="2" />
+    {broken && <g>
+      <rect x={ox - 3} y={oy + h - 3} width={w + 6} height={8} fill="#fdfdfb" />
+      <polyline points={`${ox - 8},${oy + h} ${ox + w / 2 - 9},${oy + h} ${ox + w / 2 - 4},${oy + h - 7} ${ox + w / 2 + 4},${oy + h + 7} ${ox + w / 2 + 9},${oy + h} ${ox + w + 8},${oy + h}`} fill="none" stroke={INK} strokeWidth="1.2" />
+    </g>}
     <path d={cavityPath} fill="#fdfdfb" stroke="none" />
     <line x1={basinBackX} y1={oy} x2={basinBackX} y2={rearBaseY} stroke={INK} strokeWidth="1.5" />
     <line x1={basinFrontX} y1={oy} x2={basinFrontX} y2={frontBaseY} stroke={INK} strokeWidth="1.5" />
     <line x1={backX} y1={oy} x2={basinBackX} y2={oy} stroke={INK} strokeWidth="2" />
     <line x1={basinFrontX} y1={oy} x2={frontX} y2={oy} stroke={INK} strokeWidth="2" />
-    <line x1={slopeStartX} y1={rearBaseY} x2={basinFrontX} y2={frontBaseY} stroke={INK} strokeWidth="2" />
+    <polyline points={floorPoints} fill="none" stroke={INK} strokeWidth="2" strokeLinejoin="round" />
     {d.upstandEnabled && <rect x={backX} y={oy - d.backUpstandHeight * scale} width={d.porcelainThickness * scale} height={d.backUpstandHeight * scale} fill="url(#cutHatch)" stroke={INK} strokeWidth="1.5" />}
     {concealedAtRear && (() => {
       const coverH = Math.max(4, d.porcelainThickness * scale)
@@ -220,16 +253,24 @@ export function SideView({ g, compact = false, showDimensions = !compact, svgRef
       </g>
     })()}
     {d.drainPosition === 'Rear' && d.drainType !== 'Concealed Linear' && <rect x={basinBackX} y={rearBaseY - 4} width={Math.max(12, d.drainWidth * scale)} height="7" fill={INK} />}
+    {d.drainPosition === 'Centre' && d.drainType === 'Circular' && <rect x={drainSX - Math.max(6, d.drainDiameter * scale / 2)} y={(funnel ? drainBaseY : floorYAt(drainSX)) - 3} width={Math.max(12, d.drainDiameter * scale)} height="7" fill={INK} />}
     {showDimensions && <>
       <text x={backX} y={oy + h + 14} className="orientation-label">REAR</text>
       <text x={frontX} y={oy + h + 14} textAnchor="end" className="orientation-label">FRONT</text>
       <DimensionLine x1={backX} y1={oy + h} x2={frontX} y2={oy + h} label={`${d.overallDepth} mm`} offset={compact ? 30 : 42} compact={compact} />
-      <DimensionLine x1={frontX} y1={oy} x2={frontX} y2={oy + h} label={`${d.overallHeight} mm`} offset={compact ? 27 : 52} vertical compact={compact} />
+      <DimensionLine x1={frontX} y1={oy} x2={frontX} y2={oy + h} label={`${d.overallHeight} mm${broken ? ' (broken)' : ''}`} offset={compact ? 27 : 52} vertical compact={compact} />
       {/* Compact sheets dimension the bowl depths through the rims, leaving the cavity clear. */}
       <DimensionLine x1={basinBackX} y1={innerTop} x2={basinBackX} y2={rearBaseY} label={`${Math.round(g.bowlDepthRear)} mm`} offset={compact ? -16 : 28} vertical compact={compact} />
       <DimensionLine x1={basinFrontX} y1={innerTop} x2={basinFrontX} y2={frontBaseY} label={`${Math.round(g.bowlDepthFront)} mm`} offset={compact ? 16 : -28} vertical compact={compact} />
       {d.upstandEnabled && <DimensionLine x1={backX} y1={oy - d.backUpstandHeight * scale} x2={backX} y2={oy} label={`${d.backUpstandHeight} mm`} offset={-38} vertical />}
-      {d.baseType === 'Flat' || fallDirection === 'LEVEL'
+      {funnel && <>
+        <DimensionLine x1={drainSX} y1={innerTop} x2={drainSX} y2={drainBaseY - 4} label={`${Math.round(g.bowlDepthDrain)} mm`} vertical compact={compact} />
+        <g className="fall-callout">
+          {[basinBackX + (drainSX - basinBackX) * .15, basinFrontX - (basinFrontX - drainSX) * .15].map((x, i) => { const a = funnelArrow(x); return <line key={i} x1={a.x1} y1={a.y1} x2={a.x2} y2={a.y2} markerEnd="url(#flowArrow)" /> })}
+          <text x={drainSX} y={drainBaseY + (compact ? 14 : 20)} textAnchor="middle">{Math.round(g.bowlDepthDrain - g.bowlDepthRear)} mm FALL TO DRAIN</text>
+        </g>
+      </>}
+      {funnel ? null : d.baseType === 'Flat' || fallDirection === 'LEVEL'
         ? <text x={(basinBackX + basinFrontX) / 2} y={(rearBaseY + frontBaseY) / 2 + (compact ? -8 : 22)} textAnchor="middle" className="technical-label">FLAT BASE</text>
         : <g className="fall-callout">
           <line x1={flowStartX} y1={flowStartY} x2={flowEndX} y2={flowEndY} markerEnd="url(#flowArrow)" />
@@ -326,23 +367,25 @@ function SpecRows({ x, y, width, heading, rows }: { x: number; y: number; width:
 
 export function ClientPreview({ g, svgRef }: { g: SinkGeometry; svgRef?: Ref<SVGSVGElement> }) {
   const d = g.design
-  const calculatedFall = Math.abs(g.bowlDepthRear - g.bowlDepthFront)
-  const fallDirection = g.bowlDepthRear > g.bowlDepthFront ? 'rear' : g.bowlDepthFront > g.bowlDepthRear ? 'front' : 'level'
+  const { fall: calculatedFall, to: fallDirection } = describeFall(g)
   const issued = new Date(d.updatedAt || Date.now()).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
   const material = d.material || (d.materialSupply === 'Client' ? 'Client supplied' : 'Porcelain to be confirmed')
   const vanity = [d.drawersEnabled && `${d.drawerCount} drawers`, d.vanityCladding && 'porcelain clad', d.shelfCount > 0 && `${d.shelfCount} shelf`, d.upstandEnabled && `${d.backUpstandHeight} mm upstand`].filter(Boolean).join(' / ') || 'Not included'
   const project = [d.clientName, d.projectName].filter(Boolean).join(' · ') || 'Client not specified'
   // Grow the compact section to fill its slot: thin slabs get larger, tall basins shrink to fit.
   const upstand = d.upstandEnabled ? d.backUpstandHeight : 0
-  const sideScale = Math.min(330 / d.overallDepth, 165 / (d.overallHeight + upstand))
-  const sectionBottom = 92 + (d.overallHeight + upstand) * sideScale + 45
+  const sectionHeight = sectionShownHeight(g).shown
+  const sideScale = Math.min(330 / d.overallDepth, 165 / (sectionHeight + upstand))
+  const sectionBottom = 92 + (sectionHeight + upstand) * sideScale + 45
   const sectionScale = Math.min(1.02, 200 / (sectionBottom - 16))
 
   const construction: [string, string][] = [
     ['OVERALL SIZE', `${d.overallWidth} × ${d.overallDepth} × ${d.overallHeight} mm`],
     ['BASIN OPENING', `${Math.round(g.basinWidth)} × ${Math.round(g.basinDepth)} mm`],
     ['RIMS  L / R / FRONT / REAR', `${d.leftRimWidth} / ${d.rightRimWidth} / ${d.frontRimWidth} / ${d.rearRimWidth} mm`],
-    ['INTERNAL DEPTH  REAR / FRONT', `${Math.round(g.bowlDepthRear)} / ${Math.round(g.bowlDepthFront)} mm`],
+    g.fallToDrain
+      ? ['INTERNAL DEPTH  WALLS / DRAIN', `${Math.round(g.bowlDepthRear)} / ${Math.round(g.bowlDepthDrain)} mm`]
+      : ['INTERNAL DEPTH  REAR / FRONT', `${Math.round(g.bowlDepthRear)} / ${Math.round(g.bowlDepthFront)} mm`],
     ['BASE', fallDirection === 'level' ? 'Flat' : `${Math.round(calculatedFall)} mm fall to ${fallDirection}`],
     ['BASINS / MOUNTING', `${d.basinCount} / ${d.mountingType === 'Wall Mounted' ? 'Wall-mounted' : d.mountingType}`],
   ]

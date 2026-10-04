@@ -127,9 +127,17 @@ export function ParameterPanel({ design: d, geometry: g, errors, price, warnings
         </div>
 
         <h3 className="subhead">Basin floor</h3>
-        <SelectField label="Base" value={d.baseType} options={BASE_TYPES} onChange={set('baseType')} labels={{ 'Sloped Front to Back': 'Single fall, front to back', Flat: 'Flat' }} />
+        <SelectField label="Base" value={d.baseType} options={BASE_TYPES} onChange={set('baseType')} labels={{ 'Sloped Front to Back': g.fallToDrain ? 'Falls from all sides to the drain' : 'Single fall, front to back', Flat: 'Flat' }} />
         {d.baseType === 'Flat' && <NumberField label="Internal depth" value={d.shallowBowlDepth} suffix="mm" {...INPUT.internal} onChange={set('shallowBowlDepth')} error={errors.shallowBowlDepth} hint={`Maximum ${maxInternal} mm`} />}
-        {d.baseType === 'Sloped Front to Back' && <>
+        {g.fallToDrain && <>
+          <div className="field-grid">
+            <NumberField label="Depth at walls" value={d.shallowBowlDepth} suffix="mm" {...INPUT.internal} onChange={set('shallowBowlDepth')} error={errors.shallowBowlDepth} />
+            <NumberField label="Fall to drain" value={d.baseFall} suffix="mm" {...INPUT.internal} onChange={set('baseFall')} error={errors.baseFall} />
+          </div>
+          <div className="opening-result"><span>Depth at drain</span><strong>{Math.round(g.bowlDepthDrain)} <small>mm</small></strong></div>
+          <p className="parameter-note">Centre round drain: the floor falls from all four walls to the drain.</p>
+        </>}
+        {d.baseType === 'Sloped Front to Back' && !g.fallToDrain && <>
           <SelectField label="Fall setup" value={d.fallControl} options={FALL_CONTROLS} onChange={set('fallControl')} labels={{ 'Fall and Low Point': 'Depth + fall', 'Corner Depths': 'Front and rear depths' }} />
           {d.fallControl === 'Fall and Low Point' ? <>
             <div className="field-grid">
@@ -203,7 +211,7 @@ export function ParameterPanel({ design: d, geometry: g, errors, price, warnings
         <Segmented label="Basins" value={d.basinCount} options={[1, 2, 3]} onChange={set('basinCount')} hint={d.basinCount > 1 ? `+${rate('additionalBasin')} each after the first` : undefined} />
         {errors.basinCount && <p className="inline-warning level-error">{errors.basinCount}</p>}
         {!errors.basinCount && (errors.drainLength || errors.drainDiameter) && <p className="inline-warning level-error">Drain no longer fits each basin ({Math.round(g.basins[0].width)} mm). Adjust it under Fabrication detail.</p>}
-        <Segmented label="Mounting" value={d.mountingType} options={MOUNTING_TYPES} onChange={set('mountingType')} labels={{ 'Wall Mounted': 'Wall-mounted', Supported: 'Supported' }} hint={d.mountingType === 'Wall Mounted' ? `Support allowance +${rate('wallMountedSupport')}` : d.mountingType === 'Supported' ? 'Sits on a vanity or countertop' : undefined} />
+        <Segmented label="Mounting" value={d.mountingType} options={MOUNTING_TYPES} onChange={set('mountingType')} labels={{ 'Wall Mounted': 'Wall-mounted', Supported: 'Supported' }} hint={d.mountingType === 'Wall Mounted' ? `Support allowance +${rate('wallMountedSupport')}` : d.mountingType === 'Supported' ? 'Sits on a vanity or countertop' : 'Stands on the floor · overall height is floor to rim (typically 850–900 mm)'} />
         <Segmented label="Shape" value={d.shapeType} options={SHAPE_TYPES} onChange={set('shapeType')} labels={{ Irregular: 'Irregular / polygonal' }} hint={d.shapeType === 'Irregular' ? `+${rate('irregularGeometry')} · manual review` : undefined} />
         <SelectField label="Drain" value={d.drainType} options={DRAIN_TYPES} onChange={set('drainType')} labels={{ 'Concealed Linear': 'Concealed linear (rear)', Circular: 'Round', Linear: 'Exposed linear' }} />
         {d.drainType === 'Concealed Linear' && <Segmented label="Concealed drain detail" value={d.concealedDetail} options={CONCEALED_DETAILS} onChange={set('concealedDetail')} labels={{ Standard: 'Standard (included)', Specialist: `Specialist +${rate('specialistConcealedDrain')}` }} />}

@@ -65,6 +65,8 @@ export default function App() {
   const update = (patch: Partial<SinkDesign>) => {
     setDesign((current) => {
       const next = applyOpeningRules(current, patch)
+      // A round drain defaults to the centre of the basin, with the floor falling to it.
+      if (patch.drainType === 'Circular' && current.drainType !== 'Circular' && patch.drainPosition === undefined) next.drainPosition = 'Centre'
       if (patch.drawerCount !== undefined) {
         const count = Math.min(6, Math.max(1, Math.round(patch.drawerCount)))
         next.drawerCount = count

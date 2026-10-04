@@ -130,3 +130,32 @@ describe('manual basin opening', () => {
     expect(d.leftRimWidth).toBe(50)
   })
 })
+
+describe('fall to a centre round drain', () => {
+  const round = (patch: Partial<SinkDesign> = {}) => calculateGeometry(design({ drainType: 'Circular', drainPosition: 'Centre', shallowBowlDepth: 120, baseFall: 15, ...patch }))
+
+  it('keeps every wall at the shallow depth and the drain lowest', () => {
+    const g = round()
+    expect(g.fallToDrain).toBe(true)
+    expect([g.bowlDepthRear, g.bowlDepthFront, g.bowlDepthDrain]).toEqual([120, 120, 135])
+  })
+
+  it('ignores the front-to-back fall settings', () => {
+    expect(round({ fallControl: 'Corner Depths', rearBowlDepth: 200, frontBowlDepth: 100 }).bowlDepthDrain).toBe(135)
+  })
+
+  it('keeps the front-to-back fall for a rear round drain', () => {
+    const g = round({ drainPosition: 'Rear' })
+    expect(g.fallToDrain).toBe(false)
+    expect(g.bowlDepthRear).toBe(135)
+  })
+
+  it('flags a drain deeper than the porcelain allows', () => {
+    expect(errorsFor({ drainType: 'Circular', drainPosition: 'Centre', shallowBowlDepth: 200, baseFall: 40 }).baseFall).toBeTruthy()
+  })
+
+  it('describes the fall in the client specification', () => {
+    const d = design({ drainType: 'Circular', drainPosition: 'Centre' })
+    expect(clientSummaryText(d, calculateGeometry(d), priceDesign(d))).toContain('fall from all sides to the drain')
+  })
+})

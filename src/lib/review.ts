@@ -5,7 +5,7 @@ import type { ValidationErrors } from './validation'
 /** Design notes that do not affect price but should be seen before quoting. */
 export function designAdvisories(d: SinkDesign): PriceWarning[] {
   const notes: PriceWarning[] = []
-  if (d.baseType === 'Sloped Front to Back' && ((d.fallControl === 'Fall and Low Point' && d.fallLowPoint === 'Front Internal Corner') || (d.fallControl === 'Corner Depths' && d.frontBowlDepth > d.rearBowlDepth))) {
+  if (d.baseType === 'Sloped Front to Back' && !(d.drainType === 'Circular' && d.drainPosition === 'Centre') && ((d.fallControl === 'Fall and Low Point' && d.fallLowPoint === 'Front Internal Corner') || (d.fallControl === 'Corner Depths' && d.frontBowlDepth > d.rearBowlDepth))) {
     notes.push({ key: 'fall-front', level: 'review', message: 'Fall runs to the front. Artiling standard is lowest at the rear.' })
   }
   if (d.baseType === 'Flat') notes.push({ key: 'flat-base', level: 'info', message: 'Flat base selected. Standard Artiling detail is a front-to-back fall.' })

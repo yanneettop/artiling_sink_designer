@@ -8,7 +8,7 @@ import {
 import { EffectComposer, N8AO, SMAA, ToneMapping, Vignette } from '@react-three/postprocessing'
 import { ToneMappingMode } from 'postprocessing'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
-import type { SinkGeometry } from '../lib/sinkGeometry'
+import { describeFall, type SinkGeometry } from '../lib/sinkGeometry'
 
 type Vec3 = [number, number, number]
 type ViewPreset = 'perspective' | 'front' | 'top' | 'side'
@@ -170,6 +170,35 @@ function SolidMesh({ vertices, material, edges = false }: { vertices: number[]; 
   useEffect(() => () => geometry.dispose(), [geometry])
   return <mesh geometry={geometry} material={material} castShadow receiveShadow>
     {edges && <Edges threshold={10} color="#595a55" />}
+  </mesh>
+}
+
+/**
+ * Basin floor that falls from all four walls to a drain: four flat facets
+ * meeting at the drain, so the valley lines read like a wet-room tray.
+ */
+function FunnelFloor({ x0, x1, z0, z1, wallY, drain, thickness, material, edges }: { x0: number; x1: number; z0: number; z1: number; wallY: number; drain: Vec3; thickness: number; material: Material; edges: boolean }) {
+  const key = [x0, x1, z0, z1, wallY, ...drain, thickness].map((n) => n.toFixed(5)).join(',')
+  const geometry = useMemo(() => {
+    const top = [[x0, wallY, z0], [x1, wallY, z0], [x1, wallY, z1], [x0, wallY, z1]]
+    const apex = drain
+    const below = (p: number[]) => [p[0], p[1] - thickness, p[2]]
+    const positions: number[] = []
+    for (let i = 0; i < 4; i++) {
+      const a = top[i], b = top[(i + 1) % 4]
+      positions.push(...a, ...apex, ...b) // upper facet, normal up
+      positions.push(...below(a), ...below(b), ...below(apex)) // underside
+    }
+    const geo = new BufferGeometry()
+    geo.setAttribute('position', new Float32BufferAttribute(positions, 3))
+    geo.computeVertexNormals()
+    applyWorldUVs(geo, [0, 0, 0])
+    return geo
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
+  useEffect(() => () => geometry.dispose(), [geometry])
+  return <mesh geometry={geometry} material={material} castShadow receiveShadow>
+    {edges && <Edges threshold={1} color="#73746e" />}
   </mesh>
 }
 
@@ -345,8 +374,9 @@ function SinkModel({ g, materials, technical }: { g: SinkGeometry; materials: Ma
   const deckHoles = g.basins.map((basin) => ({ x0: (basin.x - d.overallWidth / 2) * SCALE, x1: (basin.x + basin.width - d.overallWidth / 2) * SCALE, z0: basinBackZ, z1: basinFrontZ }))
   const drainXs = g.drains.map((drain) => (drain.x - d.overallWidth / 2) * SCALE)
   const drainZ = d.drainPosition === 'Rear' ? basinBackZ + d.drainOffsetBack * SCALE : (basinBackZ + basinFrontZ) / 2
-  const drainFloorY = d.drainPosition === 'Rear' ? rearFloorY : (rearFloorY + frontFloorY) / 2
-  const deepest = Math.max(-rearFloorY, -frontFloorY)
+  const drainFloorY = -g.bowlDepthDrain * SCALE
+  const funnel = g.fallToDrain
+  const deepest = Math.max(-rearFloorY, -frontFloorY, g.bowlDepthDrain * SCALE)
   const coverDepth3d = d.coverPlateDepth * SCALE
   const coverFrontZ = basinBackZ + coverDepth3d
   const coverJoinProgress = Math.min(1, Math.max(0, coverDepth3d / Math.max(.001, basinD)))
@@ -365,7 +395,10 @@ function SinkModel({ g, materials, technical }: { g: SinkGeometry; materials: Ma
     <Box size={[T, H - T, D - T * 2]} position={[W / 2 - T / 2, -T - (H - T) / 2, 0]} material={side} edges={e} />
     <Box size={[W, H - T, T]} position={[0, -T - (H - T) / 2, backZ + T / 2]} material={side} edges={e} />
 
-    <SolidMesh vertices={floorVertices} material={porcelain} edges={e} />
+    {funnel
+      ? g.basins.map((basin, index) => <FunnelFloor key={`floor-${index}`} x0={(basin.x - d.overallWidth / 2) * SCALE} x1={(basin.x + basin.width - d.overallWidth / 2) * SCALE} z0={basinBackZ} z1={basinFrontZ}
+        wallY={rearFloorY} drain={[drainXs[index], drainFloorY, drainZ]} thickness={T} material={porcelain} edges={e} />)
+      : <SolidMesh vertices={floorVertices} material={porcelain} edges={e} />}
     {hasInner(leftRim) && <SolidMesh vertices={leftWallVertices} material={porcelain} edges={e} />}
     {hasInner(rightRim) && <SolidMesh vertices={rightWallVertices} material={porcelain} edges={e} />}
     {hasInner(rearRim) && <Box size={[basinW, Math.max(.001, -rearFloorY - T), T]} position={[(leftRim - rightRim) / 2, (rearFloorY - T) / 2, basinBackZ - T / 2]} material={porcelain} edges={e} />}
@@ -381,9 +414,9 @@ function SinkModel({ g, materials, technical }: { g: SinkGeometry; materials: Ma
         ? <Line points={[[x - coverWidth3d / 2, coverJoinY + .008, coverFrontZ], [x + coverWidth3d / 2, coverJoinY + .008, coverFrontZ]]} color="#62635e" lineWidth={1} />
         : <Box size={[coverWidth3d, .006, gap * 1.5]} position={[x, coverJoinY - .002, coverFrontZ + gap]} material={shadowGap} />}
     </group>)}
-    {e && d.baseType === 'Sloped Front to Back' && <Line points={[[0, frontFloorY + .028, basinFrontZ - .08], [0, rearFloorY + .028, basinBackZ + .08]]} color="#73746e" lineWidth={1.4} />}
+    {e && d.baseType === 'Sloped Front to Back' && !funnel && <Line points={[[0, frontFloorY + .028, basinFrontZ - .08], [0, rearFloorY + .028, basinBackZ + .08]]} color="#73746e" lineWidth={1.4} />}
     {d.drainType === 'Linear' && drainXs.map((x, index) => <Box key={`linear-${index}`} size={[Math.min(d.drainLength, eachBasinW) * SCALE, .01, d.drainWidth * SCALE]} position={[x, drainFloorY + .004, drainZ + d.drainWidth * SCALE / 2]} material={e ? shadowGap : metal} />)}
-    {d.drainType === 'Circular' && drainXs.map((x, index) => <group key={`round-${index}`} position={[x, drainFloorY + .006, drainZ]}>
+    {d.drainType === 'Circular' && drainXs.map((x, index) => <group key={`round-${index}`} position={[x, drainFloorY + (funnel ? .012 : .006), drainZ]}>
       <mesh material={e ? shadowGap : metal} receiveShadow><cylinderGeometry args={[d.drainDiameter * SCALE / 2, d.drainDiameter * SCALE / 2, .008, 40]} /></mesh>
       {!e && <mesh position={[0, .0045, 0]} material={shadowGap}><cylinderGeometry args={[d.drainDiameter * SCALE * .32, d.drainDiameter * SCALE * .32, .002, 32]} /></mesh>}
     </group>)}
@@ -594,9 +627,9 @@ export function ThreeDPreview({ g, onCanvas }: { g: SinkGeometry; onCanvas?: (ca
   const extent = useMemo(() => Math.max(d.overallWidth * SCALE, d.overallDepth * SCALE, totalHeight, 2.5), [d.overallDepth, d.overallWidth, totalHeight])
   const targetY = -totalHeight * .42
   const backZ = -d.overallDepth * SCALE / 2
-  const floorY = -Math.max(RIM_HEIGHT_MM * SCALE, totalHeight + .02)
-  const calculatedFall = Math.abs(g.bowlDepthRear - g.bowlDepthFront)
-  const fallDirection = g.bowlDepthRear > g.bowlDepthFront ? 'rear' : g.bowlDepthFront > g.bowlDepthRear ? 'front' : 'level'
+  // Freestanding units stand on the floor (overall height is floor to rim); others hang at a typical rim height.
+  const floorY = d.mountingType === 'Freestanding' ? -totalHeight - .0005 : -Math.max(RIM_HEIGHT_MM * SCALE, totalHeight + .02)
+  const { fall: calculatedFall, to: fallDirection } = describeFall(g)
   const shadowSpan = extent * 1.6
 
   return <div className="preview-3d">
@@ -616,7 +649,7 @@ export function ThreeDPreview({ g, onCanvas }: { g: SinkGeometry; onCanvas?: (ca
       </label>}
     </div>
     <div className="view-3d-help">{realistic ? `Visual only · ${d.finish.toLowerCase()} finish · ` : ''}{d.drawersEnabled ? 'Click a drawer to open · ' : ''}Drag to rotate · Wheel to zoom</div>
-    {d.baseType === 'Sloped Front to Back' && <div className="fall-3d-indicator"><span>Base fall</span><strong>{Math.round(calculatedFall)} mm {fallDirection === 'level' ? 'level' : `to ${fallDirection}`}</strong></div>}
+    {d.baseType === 'Sloped Front to Back' && <div className="fall-3d-indicator"><span>Base fall</span><strong>{calculatedFall} mm {fallDirection === 'level' ? 'level' : `to ${fallDirection}`}</strong></div>}
     <Canvas shadows={{ type: PCFShadowMap }} dpr={[1, 2]} frameloop="demand" gl={{ antialias: true, preserveDrawingBuffer: true }} camera={{ fov: 32, near: .01, far: 120 }} onCreated={({ gl }) => onCanvas?.(gl.domElement)} fallback={<div className="webgl-fallback">3D preview is unavailable in this browser.</div>}>
       <color attach="background" args={[realistic ? '#cfc8bd' : '#f3f3ef']} />
       {realistic ? <>

@@ -1,5 +1,5 @@
 import type { SinkDesign } from '../types/sink'
-import type { SinkGeometry } from './sinkGeometry'
+import { describeFall, type SinkGeometry } from './sinkGeometry'
 import { PRICE_GROUPS, formatGbp, formatSignedGbp, type PriceResult } from '../pricing/engine'
 
 export const STANDARD_EXCLUSIONS = [
@@ -8,8 +8,7 @@ export const STANDARD_EXCLUSIONS = [
 ]
 
 export function specification(d: SinkDesign, g: SinkGeometry): [string, string][] {
-  const fall = Math.abs(g.bowlDepthRear - g.bowlDepthFront)
-  const fallTo = g.bowlDepthRear > g.bowlDepthFront ? 'rear' : 'front'
+  const { fall, to: fallTo } = describeFall(g)
   const vanity = [
     d.drawersEnabled && `${d.drawerCount} push-to-open drawer${d.drawerCount > 1 ? 's' : ''}`,
     d.vanityCladding && 'full porcelain cladding',
@@ -20,7 +19,7 @@ export function specification(d: SinkDesign, g: SinkGeometry): [string, string][
     ['Overall size', `${d.overallWidth} × ${d.overallDepth} × ${d.overallHeight} mm`],
     ['Basin', `${d.basinCount > 1 ? `${d.basinCount} basins, each ${Math.round(g.basins[0].width)}` : Math.round(g.basinWidth)} × ${Math.round(g.basinDepth)} mm opening`],
     ['Construction', `Mitred porcelain, ${d.porcelainThickness} mm${d.shapeType === 'Irregular' ? ', irregular / polygonal outline' : ''}`],
-    ['Base', d.baseType === 'Flat' || fall === 0 ? 'Flat' : `Single ${fall} mm fall to the ${fallTo}`],
+    ['Base', d.baseType === 'Flat' || fallTo === 'level' ? 'Flat' : fallTo === 'drain' ? `${fall} mm fall from all sides to the drain` : `Single ${fall} mm fall to the ${fallTo}`],
     ['Mounting', d.mountingType === 'Wall Mounted' ? 'Wall-mounted' : d.mountingType],
     ['Drain', d.drainType === 'Concealed Linear' ? `Concealed linear drain with porcelain cover${d.concealedDetail === 'Specialist' ? ' (specialist detail)' : ''}` : d.drainType === 'Circular' ? `Round ${d.drainDiameter} mm drain` : `Exposed linear drain, ${d.drainLength} mm`],
     ['Taps', d.tapType === 'Deck Mounted' ? `Deck-mounted, ${d.tapHoleCount * d.basinCount} tap hole${d.tapHoleCount * d.basinCount > 1 ? 's' : ''}` : d.tapType === 'Wall Mounted' ? 'Wall-mounted (not drilled)' : 'No taps'],
