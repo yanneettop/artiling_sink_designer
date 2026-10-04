@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createDefaultDesign, type SinkDesign } from '../types/sink'
-import { calculateGeometry } from './sinkGeometry'
+import { applyOpeningRules, calculateGeometry } from './sinkGeometry'
 import { validateGeometry } from './validation'
 import { migrateDesign, nextReference } from './storage'
 import { clientSummaryText } from './summary'
@@ -83,5 +83,50 @@ describe('client summary', () => {
     expect(text).toContain('Estimated total: £1,400')
     expect(text).not.toMatch(/portfolio|direct|margin/i)
     expect(text).toContain('not VAT registered')
+  })
+})
+
+describe('manual basin opening', () => {
+  const manual = () => applyOpeningRules(design(), { basinOpeningManual: true })
+
+  it('captures the current opening when switched on', () => {
+    const d = manual()
+    expect(d.basinOpeningWidth).toBe(700)
+    expect(d.basinOpeningDepth).toBe(320)
+  })
+
+  it('centres a new opening width and keeps the rear tap deck', () => {
+    const d = applyOpeningRules(manual(), { basinOpeningWidth: 600, basinOpeningDepth: 300 })
+    expect([d.leftRimWidth, d.rightRimWidth]).toEqual([100, 100])
+    expect(d.rearRimWidth).toBe(80)
+    expect(d.frontRimWidth).toBe(70)
+    const g = calculateGeometry(d)
+    expect([g.basinWidth, g.basinDepth]).toEqual([600, 300])
+  })
+
+  it('borrows from the rear rim when the front would be thinner than the porcelain', () => {
+    const d = applyOpeningRules(manual(), { basinOpeningDepth: 400 })
+    expect(d.frontRimWidth).toBe(12)
+    expect(d.rearRimWidth).toBe(38)
+  })
+
+  it('keeps the opening when the overall size changes', () => {
+    const d = applyOpeningRules(manual(), { overallWidth: 1000 })
+    expect(calculateGeometry(d).basinWidth).toBe(700)
+    expect([d.leftRimWidth, d.rightRimWidth]).toEqual([150, 150])
+  })
+
+  it('updates the stored opening when a rim is edited', () => {
+    const d = applyOpeningRules(manual(), { leftRimWidth: 100 })
+    expect(d.basinOpeningWidth).toBe(650)
+  })
+
+  it('flags an opening that leaves no porcelain at the sides', () => {
+    expect(errorsFor({ basinOpeningManual: true, basinOpeningWidth: 790 }).basinOpeningWidth).toBeTruthy()
+  })
+
+  it('leaves rims alone when the opening is not manual', () => {
+    const d = applyOpeningRules(design(), { overallWidth: 1000 })
+    expect(d.leftRimWidth).toBe(50)
   })
 })

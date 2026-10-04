@@ -39,7 +39,7 @@ type SectionKey = 'project' | 'dimensions' | 'construction' | 'vanity' | 'materi
 
 const SECTION_FIELDS: Record<SectionKey, string[]> = {
   project: [],
-  dimensions: ['overallWidth', 'overallDepth', 'overallHeight', 'width', 'depth', 'width-range', 'depth-range'],
+  dimensions: ['overallWidth', 'overallDepth', 'overallHeight', 'width', 'depth', 'width-range', 'depth-range', 'basinOpeningWidth', 'basinOpeningDepth'],
   construction: ['basinCount', 'tapPosition', 'shape', 'linear-drain', 'basins'],
   vanity: ['backUpstandHeight', 'drawerCount', 'drawers-odd', 'drawers-many', 'shelves'],
   material: ['material-tbc', 'material-cost', 'flag-Difficult porcelain'],
@@ -105,62 +105,18 @@ export function ParameterPanel({ design: d, geometry: g, errors, price, warnings
           <NumberField label="Overall height" value={d.overallHeight} suffix="mm" {...INPUT.height} onChange={set('overallHeight')} error={errors.overallHeight} />
         </div>
         {depthWarning && <p className={`inline-warning level-${depthWarning.level}`}>{depthWarning.message}</p>}
+        <Toggle label="Set basin opening manually" detail={d.basinOpeningManual ? 'Rims follow the opening' : 'Opening follows the rims'} checked={d.basinOpeningManual} onChange={set('basinOpeningManual')} />
+        {d.basinOpeningManual && <>
+          <div className="field-grid">
+            <NumberField label={d.basinCount > 1 ? 'Total opening width' : 'Opening width'} value={d.basinOpeningWidth} suffix="mm" min={1} max={INPUT.width.max} step={10} onChange={set('basinOpeningWidth')} error={errors.basinOpeningWidth} />
+            <NumberField label="Opening depth" value={d.basinOpeningDepth} suffix="mm" min={1} max={INPUT.depth.max} step={10} onChange={set('basinOpeningDepth')} error={errors.basinOpeningDepth} />
+          </div>
+          <p className="parameter-note">Centred left to right. Rims now L {d.leftRimWidth} / R {d.rightRimWidth} / front {d.frontRimWidth} / rear {d.rearRimWidth} mm; the rear tap deck is kept where possible.</p>
+        </>}
         <div className="opening-result"><span>Basin opening{d.basinCount > 1 ? ` · ${d.basinCount} basins` : ''}</span><strong>{d.basinCount > 1 ? `${d.basinCount} × ${Math.round(g.basins[0].width)}` : Math.round(g.basinWidth)} × {Math.round(g.basinDepth)} <small>mm</small></strong></div>
       </Section>
 
-      <Section step="2" title="Construction" summary={constructionSummary} open={open.construction} onToggle={() => toggle('construction')} flagged={flag('construction')}>
-        <Segmented label="Basins" value={d.basinCount} options={[1, 2, 3]} onChange={set('basinCount')} hint={d.basinCount > 1 ? `+${rate('additionalBasin')} each after the first` : undefined} />
-        {errors.basinCount && <p className="inline-warning level-error">{errors.basinCount}</p>}
-        {!errors.basinCount && (errors.drainLength || errors.drainDiameter) && <p className="inline-warning level-error">Drain no longer fits each basin ({Math.round(g.basins[0].width)} mm). Adjust it under Fabrication detail.</p>}
-        <Segmented label="Mounting" value={d.mountingType} options={MOUNTING_TYPES} onChange={set('mountingType')} labels={{ 'Wall Mounted': 'Wall-mounted', Supported: 'Supported' }} hint={d.mountingType === 'Wall Mounted' ? `Support allowance +${rate('wallMountedSupport')}` : d.mountingType === 'Supported' ? 'Sits on a vanity or countertop' : undefined} />
-        <Segmented label="Shape" value={d.shapeType} options={SHAPE_TYPES} onChange={set('shapeType')} labels={{ Irregular: 'Irregular / polygonal' }} hint={d.shapeType === 'Irregular' ? `+${rate('irregularGeometry')} · manual review` : undefined} />
-        <SelectField label="Drain" value={d.drainType} options={DRAIN_TYPES} onChange={set('drainType')} labels={{ 'Concealed Linear': 'Concealed linear (rear)', Circular: 'Round', Linear: 'Exposed linear' }} />
-        {d.drainType === 'Concealed Linear' && <Segmented label="Concealed drain detail" value={d.concealedDetail} options={CONCEALED_DETAILS} onChange={set('concealedDetail')} labels={{ Standard: 'Standard (included)', Specialist: `Specialist +${rate('specialistConcealedDrain')}` }} />}
-        <Segmented label="Taps" value={d.tapType} options={TAP_TYPES} onChange={set('tapType')} labels={{ 'Deck Mounted': 'Deck-mounted', 'Wall Mounted': 'Wall-mounted', None: 'None' }} />
-        {d.tapType === 'Deck Mounted' && <NumberField label={d.basinCount > 1 ? 'Tap holes per basin' : 'Tap holes'} value={d.tapHoleCount} {...LIMITS.tapHolesPerBasin} onChange={set('tapHoleCount')} error={errors.tapPosition} hint={price.lines.find((l) => l.key === 'taps')?.detail ?? 'First hole included'} />}
-        <Toggle label="Overflow" detail={`+${rate('overflow')}`} checked={d.overflow} onChange={set('overflow')} />
-      </Section>
-
-      <Section step="3" title="Vanity & extras" summary={vanityItems.length ? vanityItems.join(' · ') : 'None'} open={open.vanity} onToggle={() => toggle('vanity')} flagged={flag('vanity')}>
-        <Toggle label="Vanity drawers" detail={`${rate('drawerPair')} per pair`} checked={d.drawersEnabled} onChange={set('drawersEnabled')} />
-        {d.drawersEnabled && <NumberField label="Number of drawers" value={d.drawerCount} min={1} max={6} onChange={(drawerCount) => onChange({ drawerCount })} error={errors.drawerCount} hint={warningFor('drawers-odd')?.message ?? warningFor('drawers-many')?.message} hintLevel="review" />}
-        <Toggle label="Porcelain vanity cladding" detail={rate('vanityCladding')} checked={d.vanityCladding} onChange={set('vanityCladding')} />
-        <NumberField label="Matching porcelain shelves" value={d.shelfCount} min={0} max={6} onChange={set('shelfCount')} hint={d.shelfCount ? `${d.shelfCount} × ${rate('shelf')}` : `${rate('shelf')} each`} />
-        <Toggle label="Matching upstand" detail={`+${rate('matchingUpstand')}`} checked={d.upstandEnabled} onChange={set('upstandEnabled')} />
-        {d.upstandEnabled && <NumberField label="Upstand height" value={d.backUpstandHeight} suffix="mm" min={0} max={1500} step={10} onChange={set('backUpstandHeight')} error={errors.backUpstandHeight} />}
-      </Section>
-
-      <Section step="4" title="Material" summary={materialSummary} open={open.material} onToggle={() => toggle('material')} flagged={flag('material')}>
-        <Segmented label="Porcelain supply" value={d.materialSupply} options={MATERIAL_SUPPLY} onChange={set('materialSupply')} labels={{ TBC: 'Not confirmed', Client: 'Client', Artiling: 'Artiling' }} />
-        {d.materialSupply === 'Artiling' && <NumberField label="Supplier cost" prefix="£" decimal value={d.materialCost} {...INPUT.money} onChange={set('materialCost')} hint={`Charged at cost + ${Math.round(MATERIAL_MARKUP[mode] * 100)}% handling / waste = ${formatGbp(price.groupTotals.material)}`} />}
-        <TextField label="Porcelain reference" value={d.material} onChange={set('material')} placeholder="Supplier, range, colour, slab size" />
-        <SelectField label="Finish" value={d.finish} options={FINISHES} onChange={set('finish')} />
-        <Toggle label="Difficult or premium porcelain" detail="Artan confirmation" checked={d.reviewFlags.includes('Difficult porcelain')} onChange={(on) => onChange({ reviewFlags: on ? [...d.reviewFlags, 'Difficult porcelain'] : d.reviewFlags.filter((f) => f !== 'Difficult porcelain') })} />
-        <TextField label="Material notes" value={d.materialNotes} onChange={set('materialNotes')} multiline />
-      </Section>
-
-      <Section step="5" title="Site & service" summary={serviceSummary} open={open.service} onToggle={() => toggle('service')} flagged={flag('service')}>
-        <SelectField label="Delivery" value={d.deliveryType} options={DELIVERY_TYPES} onChange={set('deliveryType')} labels={{ None: 'None / collection', London: `London · ${rate('deliveryLondon')}`, Large: `Large / two-person · ${rate('deliveryLarge')}`, Manual: 'Manual amount' }} />
-        {d.deliveryType === 'Manual' && <NumberField label="Delivery amount" prefix="£" value={d.manualDelivery} {...INPUT.money} onChange={set('manualDelivery')} />}
-        <SelectField label="Installation" value={d.installationType} options={INSTALLATION_TYPES} onChange={set('installationType')} labels={{ None: 'Not included', Standard: `Standard · ${rate('installationStandard')}`, Large: `Large / wall-mounted · ${rate('installationLarge')}`, Manual: 'Manual amount' }} />
-        {d.installationType === 'Manual' && <NumberField label="Installation amount" prefix="£" value={d.manualInstallation} {...INPUT.money} onChange={set('manualInstallation')} />}
-        {warningFor('wall-install') && <p className="inline-warning level-info">{warningFor('wall-install')!.message}</p>}
-        <Segmented label="Templating" value={d.templating} options={TEMPLATING_TYPES} onChange={set('templating')} labels={{ None: 'Not required', Physical: `Physical · ${rate('templatingPhysical')}` }} />
-      </Section>
-
-      <Section step="6" title="Pricing controls" summary={`${mode}${d.directJobCost ? ` · cost ${formatGbp(d.directJobCost)}` : ''}${d.reviewFlags.length ? ` · ${plural(d.reviewFlags.length, 'flag')}` : ''}`} open={open.commercial} onToggle={() => toggle('commercial')} flagged={flag('commercial')}>
-        <p className="parameter-note">Internal only. Not shown to the client.</p>
-        <Segmented label="Pricing mode" value={d.pricingMode} options={PRICING_MODES} onChange={set('pricingMode')} hint={mode === 'Portfolio' ? 'Launch pricing, about 10% below Standard' : 'Normal market pricing'} />
-        <NumberField label="Direct job cost" prefix="£" value={d.directJobCost} {...INPUT.money} onChange={set('directJobCost')} hint={price.safeMinimum ? `Margin floor ${formatGbp(price.safeMinimum)}` : 'Labour, material, transport, consumables'} />
-        <NumberField label="Manual complexity allowance" prefix="£" value={d.manualComplexity} {...INPUT.money} onChange={set('manualComplexity')} hint={d.manualComplexity ? 'Triggers review' : 'For detailing not covered above'} hintLevel={d.manualComplexity ? 'review' : 'info'} />
-        {d.manualComplexity > 0 && <TextField label="Reason for allowance" value={d.manualComplexityNote} onChange={set('manualComplexityNote')} />}
-        <fieldset className="field flag-list">
-          <legend>Needs Artan confirmation</legend>
-          {REVIEW_FLAGS.filter((f) => f !== 'Difficult porcelain').map((f) => <Toggle key={f} label={f} checked={d.reviewFlags.includes(f)} onChange={(on) => onChange({ reviewFlags: on ? [...d.reviewFlags, f] : d.reviewFlags.filter((x) => x !== f) })} />)}
-        </fieldset>
-      </Section>
-
-      <Section title="Fabrication detail" summary={`${d.porcelainThickness} mm porcelain · rims ${d.leftRimWidth}/${d.rightRimWidth}/${d.frontRimWidth}/${d.rearRimWidth}`} open={open.detail} onToggle={() => toggle('detail')} flagged={flag('detail')}>
+      <Section step="2" title="Fabrication detail" summary={`${d.porcelainThickness} mm porcelain · rims ${d.leftRimWidth}/${d.rightRimWidth}/${d.frontRimWidth}/${d.rearRimWidth}`} open={open.detail} onToggle={() => toggle('detail')} flagged={flag('detail')}>
         <NumberField label="Porcelain thickness" value={d.porcelainThickness} suffix="mm" {...INPUT.thickness} onChange={set('porcelainThickness')} error={errors.porcelainThickness} />
         <h3 className="subhead">Rims</h3>
         <div className="field-grid">
@@ -242,6 +198,59 @@ export function ParameterPanel({ design: d, geometry: g, errors, price, warnings
             : <div className="field-grid">{d.drawerHeights.slice(0, d.drawerCount).map((height, index) => <NumberField key={index} label={`Drawer ${index + 1} height`} value={height} suffix="mm" {...INPUT.drawerHeight} error={errors[`drawerHeight${index}`]} onChange={(value) => onChange({ drawerHeights: d.drawerHeights.map((item, i) => i === index ? value : item) })} />)}</div>}
         </>}
       </Section>
+
+      <Section step="3" title="Construction" summary={constructionSummary} open={open.construction} onToggle={() => toggle('construction')} flagged={flag('construction')}>
+        <Segmented label="Basins" value={d.basinCount} options={[1, 2, 3]} onChange={set('basinCount')} hint={d.basinCount > 1 ? `+${rate('additionalBasin')} each after the first` : undefined} />
+        {errors.basinCount && <p className="inline-warning level-error">{errors.basinCount}</p>}
+        {!errors.basinCount && (errors.drainLength || errors.drainDiameter) && <p className="inline-warning level-error">Drain no longer fits each basin ({Math.round(g.basins[0].width)} mm). Adjust it under Fabrication detail.</p>}
+        <Segmented label="Mounting" value={d.mountingType} options={MOUNTING_TYPES} onChange={set('mountingType')} labels={{ 'Wall Mounted': 'Wall-mounted', Supported: 'Supported' }} hint={d.mountingType === 'Wall Mounted' ? `Support allowance +${rate('wallMountedSupport')}` : d.mountingType === 'Supported' ? 'Sits on a vanity or countertop' : undefined} />
+        <Segmented label="Shape" value={d.shapeType} options={SHAPE_TYPES} onChange={set('shapeType')} labels={{ Irregular: 'Irregular / polygonal' }} hint={d.shapeType === 'Irregular' ? `+${rate('irregularGeometry')} · manual review` : undefined} />
+        <SelectField label="Drain" value={d.drainType} options={DRAIN_TYPES} onChange={set('drainType')} labels={{ 'Concealed Linear': 'Concealed linear (rear)', Circular: 'Round', Linear: 'Exposed linear' }} />
+        {d.drainType === 'Concealed Linear' && <Segmented label="Concealed drain detail" value={d.concealedDetail} options={CONCEALED_DETAILS} onChange={set('concealedDetail')} labels={{ Standard: 'Standard (included)', Specialist: `Specialist +${rate('specialistConcealedDrain')}` }} />}
+        <Segmented label="Taps" value={d.tapType} options={TAP_TYPES} onChange={set('tapType')} labels={{ 'Deck Mounted': 'Deck-mounted', 'Wall Mounted': 'Wall-mounted', None: 'None' }} />
+        {d.tapType === 'Deck Mounted' && <NumberField label={d.basinCount > 1 ? 'Tap holes per basin' : 'Tap holes'} value={d.tapHoleCount} {...LIMITS.tapHolesPerBasin} onChange={set('tapHoleCount')} error={errors.tapPosition} hint={price.lines.find((l) => l.key === 'taps')?.detail ?? 'First hole included'} />}
+        <Toggle label="Overflow" detail={`+${rate('overflow')}`} checked={d.overflow} onChange={set('overflow')} />
+      </Section>
+
+      <Section step="4" title="Vanity & extras" summary={vanityItems.length ? vanityItems.join(' · ') : 'None'} open={open.vanity} onToggle={() => toggle('vanity')} flagged={flag('vanity')}>
+        <Toggle label="Vanity drawers" detail={`${rate('drawerPair')} per pair`} checked={d.drawersEnabled} onChange={set('drawersEnabled')} />
+        {d.drawersEnabled && <NumberField label="Number of drawers" value={d.drawerCount} min={1} max={6} onChange={(drawerCount) => onChange({ drawerCount })} error={errors.drawerCount} hint={warningFor('drawers-odd')?.message ?? warningFor('drawers-many')?.message} hintLevel="review" />}
+        <Toggle label="Porcelain vanity cladding" detail={rate('vanityCladding')} checked={d.vanityCladding} onChange={set('vanityCladding')} />
+        <NumberField label="Matching porcelain shelves" value={d.shelfCount} min={0} max={6} onChange={set('shelfCount')} hint={d.shelfCount ? `${d.shelfCount} × ${rate('shelf')}` : `${rate('shelf')} each`} />
+        <Toggle label="Matching upstand" detail={`+${rate('matchingUpstand')}`} checked={d.upstandEnabled} onChange={set('upstandEnabled')} />
+        {d.upstandEnabled && <NumberField label="Upstand height" value={d.backUpstandHeight} suffix="mm" min={0} max={1500} step={10} onChange={set('backUpstandHeight')} error={errors.backUpstandHeight} />}
+      </Section>
+
+      <Section step="5" title="Material" summary={materialSummary} open={open.material} onToggle={() => toggle('material')} flagged={flag('material')}>
+        <Segmented label="Porcelain supply" value={d.materialSupply} options={MATERIAL_SUPPLY} onChange={set('materialSupply')} labels={{ TBC: 'Not confirmed', Client: 'Client', Artiling: 'Artiling' }} />
+        {d.materialSupply === 'Artiling' && <NumberField label="Supplier cost" prefix="£" decimal value={d.materialCost} {...INPUT.money} onChange={set('materialCost')} hint={`Charged at cost + ${Math.round(MATERIAL_MARKUP[mode] * 100)}% handling / waste = ${formatGbp(price.groupTotals.material)}`} />}
+        <TextField label="Porcelain reference" value={d.material} onChange={set('material')} placeholder="Supplier, range, colour, slab size" />
+        <SelectField label="Finish" value={d.finish} options={FINISHES} onChange={set('finish')} />
+        <Toggle label="Difficult or premium porcelain" detail="Artan confirmation" checked={d.reviewFlags.includes('Difficult porcelain')} onChange={(on) => onChange({ reviewFlags: on ? [...d.reviewFlags, 'Difficult porcelain'] : d.reviewFlags.filter((f) => f !== 'Difficult porcelain') })} />
+        <TextField label="Material notes" value={d.materialNotes} onChange={set('materialNotes')} multiline />
+      </Section>
+
+      <Section step="6" title="Site & service" summary={serviceSummary} open={open.service} onToggle={() => toggle('service')} flagged={flag('service')}>
+        <SelectField label="Delivery" value={d.deliveryType} options={DELIVERY_TYPES} onChange={set('deliveryType')} labels={{ None: 'None / collection', London: `London · ${rate('deliveryLondon')}`, Large: `Large / two-person · ${rate('deliveryLarge')}`, Manual: 'Manual amount' }} />
+        {d.deliveryType === 'Manual' && <NumberField label="Delivery amount" prefix="£" value={d.manualDelivery} {...INPUT.money} onChange={set('manualDelivery')} />}
+        <SelectField label="Installation" value={d.installationType} options={INSTALLATION_TYPES} onChange={set('installationType')} labels={{ None: 'Not included', Standard: `Standard · ${rate('installationStandard')}`, Large: `Large / wall-mounted · ${rate('installationLarge')}`, Manual: 'Manual amount' }} />
+        {d.installationType === 'Manual' && <NumberField label="Installation amount" prefix="£" value={d.manualInstallation} {...INPUT.money} onChange={set('manualInstallation')} />}
+        {warningFor('wall-install') && <p className="inline-warning level-info">{warningFor('wall-install')!.message}</p>}
+        <Segmented label="Templating" value={d.templating} options={TEMPLATING_TYPES} onChange={set('templating')} labels={{ None: 'Not required', Physical: `Physical · ${rate('templatingPhysical')}` }} />
+      </Section>
+
+      <Section step="7" title="Pricing controls" summary={`${mode}${d.directJobCost ? ` · cost ${formatGbp(d.directJobCost)}` : ''}${d.reviewFlags.length ? ` · ${plural(d.reviewFlags.length, 'flag')}` : ''}`} open={open.commercial} onToggle={() => toggle('commercial')} flagged={flag('commercial')}>
+        <p className="parameter-note">Internal only. Not shown to the client.</p>
+        <Segmented label="Pricing mode" value={d.pricingMode} options={PRICING_MODES} onChange={set('pricingMode')} hint={mode === 'Portfolio' ? 'Launch pricing, about 10% below Standard' : 'Normal market pricing'} />
+        <NumberField label="Direct job cost" prefix="£" value={d.directJobCost} {...INPUT.money} onChange={set('directJobCost')} hint={price.safeMinimum ? `Margin floor ${formatGbp(price.safeMinimum)}` : 'Labour, material, transport, consumables'} />
+        <NumberField label="Manual complexity allowance" prefix="£" value={d.manualComplexity} {...INPUT.money} onChange={set('manualComplexity')} hint={d.manualComplexity ? 'Triggers review' : 'For detailing not covered above'} hintLevel={d.manualComplexity ? 'review' : 'info'} />
+        {d.manualComplexity > 0 && <TextField label="Reason for allowance" value={d.manualComplexityNote} onChange={set('manualComplexityNote')} />}
+        <fieldset className="field flag-list">
+          <legend>Needs Artan confirmation</legend>
+          {REVIEW_FLAGS.filter((f) => f !== 'Difficult porcelain').map((f) => <Toggle key={f} label={f} checked={d.reviewFlags.includes(f)} onChange={(on) => onChange({ reviewFlags: on ? [...d.reviewFlags, f] : d.reviewFlags.filter((x) => x !== f) })} />)}
+        </fieldset>
+      </Section>
+
     </div>
   </aside>
 }

@@ -17,6 +17,13 @@ export function validateGeometry(g: SinkGeometry): ValidationErrors {
   const minimumHeight = d.porcelainThickness * 2 + MIN_INTERNAL_DEPTH
   if (d.overallHeight < minimumHeight) set('overallHeight', `Height must be at least ${minimumHeight} mm for a ${MIN_INTERNAL_DEPTH} mm basin.`)
 
+  if (d.basinOpeningManual) {
+    const maxWidth = d.overallWidth - d.porcelainThickness * 2
+    const maxDepth = d.overallDepth - d.porcelainThickness * 2
+    if (d.basinOpeningWidth <= 0 || d.basinOpeningWidth > maxWidth) set('basinOpeningWidth', `Opening width must be between 1 and ${maxWidth} mm.`)
+    if (d.basinOpeningDepth <= 0 || d.basinOpeningDepth > maxDepth) set('basinOpeningDepth', `Opening depth must be between 1 and ${maxDepth} mm.`)
+  }
+
   for (const [key, label] of [['leftRimWidth', 'Left'], ['rightRimWidth', 'Right'], ['frontRimWidth', 'Front'], ['rearRimWidth', 'Rear']] as const) {
     if (d[key] < d.porcelainThickness) set(key, `${label} rim cannot be thinner than the porcelain.`)
   }

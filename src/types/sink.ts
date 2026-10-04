@@ -52,6 +52,11 @@ export interface SinkDesign {
   rightRimWidth: number
   frontRimWidth: number
   rearRimWidth: number
+  /** When true the basin opening is entered directly and the rims are derived from it. */
+  basinOpeningManual: boolean
+  /** Total opening (all basins and dividers), mm. Used only when basinOpeningManual. */
+  basinOpeningWidth: number
+  basinOpeningDepth: number
   /** Legacy value retained only when loading older saved designs. */
   frontFasciaHeight?: number
   /** Legacy values retained only when loading older saved designs. */
@@ -127,6 +132,7 @@ export const createDefaultDesign = (reference = 'AS-SINK-001'): SinkDesign => ({
   material: '', finish: 'Matt', materialNotes: '', materialSupply: 'TBC', materialCost: 0,
   overallWidth: 800, overallDepth: 450, overallHeight: 250, porcelainThickness: 12,
   leftRimWidth: 50, rightRimWidth: 50, frontRimWidth: 50, rearRimWidth: 80,
+  basinOpeningManual: false, basinOpeningWidth: 700, basinOpeningDepth: 320,
   basinCount: 1, mountingType: 'Supported', shapeType: 'Rectangular', overflow: false,
   upstandEnabled: false, backUpstandHeight: 100,
   drawersEnabled: false, drawerCount: 2, drawerAutoWidth: true, drawerWidth: 800,

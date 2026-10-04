@@ -36,6 +36,48 @@ export interface SinkGeometry {
   drawerWidth: number
 }
 
+const RIM_KEYS = ['leftRimWidth', 'rightRimWidth', 'frontRimWidth', 'rearRimWidth'] as const
+
+/**
+ * Rims that produce the requested opening. The opening is centred left to right;
+ * the rear rim (tap deck) is kept and the front rim takes up the difference,
+ * borrowing from the rear only when the front would be thinner than the porcelain.
+ */
+export function rimsForOpening(design: SinkDesign, openingWidth: number, openingDepth: number): Pick<SinkDesign, typeof RIM_KEYS[number]> {
+  const side = Math.max(0, design.overallWidth - openingWidth) / 2
+  const leftRimWidth = Math.floor(side)
+  const rightRimWidth = Math.max(0, design.overallWidth - openingWidth - leftRimWidth)
+  const spareDepth = design.overallDepth - openingDepth
+  let rearRimWidth = design.rearRimWidth
+  let frontRimWidth = spareDepth - rearRimWidth
+  if (frontRimWidth < design.porcelainThickness) {
+    frontRimWidth = design.porcelainThickness
+    rearRimWidth = spareDepth - frontRimWidth
+  }
+  return { leftRimWidth, rightRimWidth, frontRimWidth: Math.max(0, frontRimWidth), rearRimWidth: Math.max(0, rearRimWidth) }
+}
+
+/**
+ * Applies a patch while honouring a manually entered basin opening: overall size
+ * changes keep the opening and move the rims; rim changes update the stored opening.
+ */
+export function applyOpeningRules(current: SinkDesign, patch: Partial<SinkDesign>): SinkDesign {
+  const next = { ...current, ...patch }
+  if (!next.basinOpeningManual) return next
+  const turningOn = patch.basinOpeningManual === true && !current.basinOpeningManual
+  if (turningOn) {
+    const g = calculateGeometry(current)
+    return { ...next, basinOpeningWidth: Math.round(g.basinWidth), basinOpeningDepth: Math.round(g.basinDepth) }
+  }
+  if (RIM_KEYS.some((key) => key in patch)) {
+    return { ...next, basinOpeningWidth: next.overallWidth - next.leftRimWidth - next.rightRimWidth, basinOpeningDepth: next.overallDepth - next.frontRimWidth - next.rearRimWidth }
+  }
+  if ('overallWidth' in patch || 'overallDepth' in patch || 'basinOpeningWidth' in patch || 'basinOpeningDepth' in patch) {
+    return { ...next, ...rimsForOpening(next, next.basinOpeningWidth, next.basinOpeningDepth) }
+  }
+  return next
+}
+
 export function calculateGeometry(design: SinkDesign): SinkGeometry {
   const edgeLeft = Math.max(design.leftRimWidth, design.porcelainThickness)
   const edgeRight = Math.max(design.rightRimWidth, design.porcelainThickness)

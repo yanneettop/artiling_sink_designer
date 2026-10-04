@@ -6,7 +6,7 @@ import { QuoteReview } from './components/QuoteReview'
 import { AxonometricView, ClientPreview, FrontView, SideView, TopView } from './components/TechnicalSvg'
 import { SavedDesigns } from './components/SavedDesigns'
 import { StartScreen } from './components/StartScreen'
-import { calculateGeometry } from './lib/sinkGeometry'
+import { applyOpeningRules, calculateGeometry } from './lib/sinkGeometry'
 import { validateGeometry } from './lib/validation'
 import { designAdvisories } from './lib/review'
 import { exportCanvasPng, exportPdf, exportPng, exportSvg } from './lib/export'
@@ -64,7 +64,7 @@ export default function App() {
 
   const update = (patch: Partial<SinkDesign>) => {
     setDesign((current) => {
-      const next = { ...current, ...patch }
+      const next = applyOpeningRules(current, patch)
       if (patch.drawerCount !== undefined) {
         const count = Math.min(6, Math.max(1, Math.round(patch.drawerCount)))
         next.drawerCount = count
