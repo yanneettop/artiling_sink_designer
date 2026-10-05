@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createDefaultDesign, type SinkDesign } from '../types/sink'
-import { applyOpeningRules, calculateGeometry } from './sinkGeometry'
+import { applyOpeningRules, calculateGeometry, DEFAULT_DRAIN_CHANNEL_DEPTH_MM, DEFAULT_FRONT_BASIN_DEPTH_MM, DEFAULT_REAR_DRAIN_LEVEL_MM, describeFall } from './sinkGeometry'
 import { validateGeometry } from './validation'
 import { migrateDesign, nextReference } from './storage'
 import { clientSummaryText } from './summary'
@@ -42,7 +42,7 @@ describe('validation', () => {
   })
 
   it('gives a sensible message when the height is too low', () => {
-    expect(errorsFor({ overallHeight: 30 }).overallHeight).toMatch(/at least 64 mm/)
+    expect(errorsFor({ overallHeight: 30 }).overallHeight).toMatch(/at least 59 mm/)
   })
 
   it('requires an upstand height and drawers no deeper than the sink', () => {
@@ -157,5 +157,47 @@ describe('fall to a centre round drain', () => {
   it('describes the fall in the client specification', () => {
     const d = design({ drainType: 'Circular', drainPosition: 'Centre' })
     expect(clientSummaryText(d, calculateGeometry(d), priceDesign(d))).toContain('fall from all sides to the drain')
+  })
+})
+
+describe('standard Artiling basin levels', () => {
+  // 1545 × 500 × 150 with the default 50 mm front and 80 mm rear rims and a 40 mm drain cover.
+  const standard = () => calculateGeometry(design({ overallWidth: 1545, overallDepth: 500, overallHeight: 150 }))
+
+  it('starts 35 mm below the top at the front and ends 120 mm below at the rear drain', () => {
+    const g = standard()
+    expect(g.bowlDepthFront).toBe(DEFAULT_FRONT_BASIN_DEPTH_MM)
+    expect(g.bowlDepthRear).toBe(DEFAULT_REAR_DRAIN_LEVEL_MM)
+    expect(describeFall(g)).toEqual({ fall: 85, to: 'rear' })
+  })
+
+  it('derives the slope angle from the run in front of the drain cover', () => {
+    const g = standard()
+    expect(g.slopeRun).toBe(370 - 40)
+    expect(g.slopeAngle).toBeCloseTo(Math.atan(85 / 330) * 180 / Math.PI)
+    // A deeper sink keeps the two levels and flattens the slope.
+    const deep = calculateGeometry(design({ overallWidth: 1545, overallDepth: 600, overallHeight: 150 }))
+    expect([deep.bowlDepthFront, deep.bowlDepthRear]).toEqual([35, 120])
+    expect(deep.slopeAngle).toBeLessThan(g.slopeAngle)
+  })
+
+  it('leaves an open channel below the cover within the overall height', () => {
+    const g = standard()
+    expect(g.concealedDrain).toBe(true)
+    expect(g.drainChannelBottom).toBe(150 - 12)
+    expect(g.drainChannelDepth).toBe(150 - 12 - (120 + 12))
+    const tall = calculateGeometry(design({ overallHeight: 250 }))
+    expect(tall.drainChannelBottom).toBe(120 + DEFAULT_DRAIN_CHANNEL_DEPTH_MM)
+    expect(validateGeometry(standard())).toEqual({})
+  })
+
+  it('flags a height with no room for the drain channel', () => {
+    expect(errorsFor({ overallHeight: 144 }).overallHeight ?? errorsFor({ overallHeight: 144 }).baseFall).toBeTruthy()
+  })
+
+  it('keeps the levels of previously saved designs', () => {
+    const old = migrateDesign({ id: 'old', reference: 'AS-SINK-009', shallowBowlDepth: 78, baseFall: 12, rearBowlDepth: 90, frontBowlDepth: 78 })
+    const g = calculateGeometry(old)
+    expect([g.bowlDepthFront, g.bowlDepthRear]).toEqual([78, 90])
   })
 })

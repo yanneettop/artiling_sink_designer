@@ -188,7 +188,7 @@ export function FrontView({ g, compact = false, showDimensions = !compact, svgRe
  * so the basin stays legible; the height dimension still states the true value.
  */
 export function sectionShownHeight(g: SinkGeometry): { shown: number; broken: boolean } {
-  const deepest = Math.max(g.bowlDepthRear, g.bowlDepthFront, g.bowlDepthDrain) + g.design.porcelainThickness
+  const deepest = Math.max(g.bowlDepthRear, g.bowlDepthFront, g.bowlDepthDrain, g.drainChannelBottom) + g.design.porcelainThickness
   const broken = g.design.overallHeight > deepest + 260
   return { shown: broken ? deepest + 120 : g.design.overallHeight, broken }
 }
@@ -202,15 +202,14 @@ export function SideView({ g, compact = false, showDimensions = !compact, svgRef
   const w = d.overallDepth * scale, h = shown * scale
   const ox = compact ? 75 : 150, oy = compact ? 92 + (d.upstandEnabled ? d.backUpstandHeight * scale : 0) : 130 + (d.upstandEnabled ? d.backUpstandHeight * scale : 0)
   const backX = ox, frontX = ox + w
-  const innerTop = oy + d.porcelainThickness * scale
   const frontBaseY = oy + g.bowlDepthFront * scale
   const rearBaseY = oy + g.bowlDepthRear * scale
   const basinBackX = ox + g.edgeBack * scale
   const basinFrontX = ox + (g.edgeBack + g.basinDepth) * scale
-  const concealedAtRear = d.drainType === 'Concealed Linear' && d.drainPosition === 'Rear'
-  const coverSectionWidth = Math.min(g.basinDepth * scale * .45, d.coverPlateDepth * scale)
-  // One continuous fall across the whole base; the lid sits over it at the rear.
-  const slopeStartX = basinBackX
+  // Concealed drain: the single fall ends flush with the top of the lid, over an open channel.
+  const concealedAtRear = g.concealedDrain
+  const slopeStartX = basinFrontX - g.slopeRun * scale
+  const channelBottomY = oy + g.drainChannelBottom * scale
   const calculatedFall = Math.abs(g.bowlDepthRear - g.bowlDepthFront)
   const fallDirection = g.bowlDepthRear > g.bowlDepthFront ? 'REAR' : g.bowlDepthFront > g.bowlDepthRear ? 'FRONT' : 'LEVEL'
   const slopeSpan = Math.max(1, basinFrontX - slopeStartX)
@@ -223,8 +222,9 @@ export function SideView({ g, compact = false, showDimensions = !compact, svgRef
   const funnel = g.fallToDrain
   const drainSX = ox + g.drainY * scale
   const drainBaseY = oy + g.bowlDepthDrain * scale
-  const floorPoints = funnel ? `${basinBackX},${rearBaseY} ${drainSX},${drainBaseY} ${basinFrontX},${frontBaseY}` : `${slopeStartX},${rearBaseY} ${basinFrontX},${frontBaseY}`
-  const cavityPath = `M ${basinBackX} ${oy - 3} L ${basinBackX} ${rearBaseY} L ${floorPoints.split(' ').map((p) => p.replace(',', ' ')).join(' L ')} L ${basinFrontX} ${oy - 3} Z`
+  const floorPoints = funnel ? `${basinBackX},${rearBaseY} ${drainSX},${drainBaseY} ${basinFrontX},${frontBaseY}`
+    : `${concealedAtRear ? `${slopeStartX},${channelBottomY} ` : ''}${slopeStartX},${rearBaseY} ${basinFrontX},${frontBaseY}`
+  const cavityPath = `M ${basinBackX} ${oy - 3} L ${basinBackX} ${concealedAtRear ? channelBottomY : rearBaseY} L ${floorPoints.split(' ').map((p) => p.replace(',', ' ')).join(' L ')} L ${basinFrontX} ${oy - 3} Z`
   const funnelArrow = (fromX: number) => {
     const t = .55
     const x1 = fromX, x2 = fromX + (drainSX - fromX) * t
@@ -245,23 +245,33 @@ export function SideView({ g, compact = false, showDimensions = !compact, svgRef
       <polyline points={`${ox - 8},${oy + h} ${ox + w / 2 - 9},${oy + h} ${ox + w / 2 - 4},${oy + h - 7} ${ox + w / 2 + 4},${oy + h + 7} ${ox + w / 2 + 9},${oy + h} ${ox + w + 8},${oy + h}`} fill="none" stroke={pal.ink} strokeWidth={1.2 * pal.lw} />
     </g>}
     <path d={cavityPath} fill={pal.paper} stroke="none" />
-    <line x1={basinBackX} y1={oy} x2={basinBackX} y2={rearBaseY} stroke={pal.ink} strokeWidth={1.5 * pal.lw} />
+    <line x1={basinBackX} y1={oy} x2={basinBackX} y2={concealedAtRear ? channelBottomY : rearBaseY} stroke={pal.ink} strokeWidth={1.5 * pal.lw} />
+    {concealedAtRear && <line x1={basinBackX} y1={channelBottomY} x2={slopeStartX} y2={channelBottomY} stroke={pal.ink} strokeWidth={1.5 * pal.lw} />}
     <line x1={basinFrontX} y1={oy} x2={basinFrontX} y2={frontBaseY} stroke={pal.ink} strokeWidth={1.5 * pal.lw} />
     <line x1={backX} y1={oy} x2={basinBackX} y2={oy} stroke={pal.ink} strokeWidth={2 * pal.lw} />
     <line x1={basinFrontX} y1={oy} x2={frontX} y2={oy} stroke={pal.ink} strokeWidth={2 * pal.lw} />
     <polyline points={floorPoints} fill="none" stroke={pal.ink} strokeWidth={2 * pal.lw} strokeLinejoin="round" />
     {d.upstandEnabled && <rect x={backX} y={oy - d.backUpstandHeight * scale} width={d.porcelainThickness * scale} height={d.backUpstandHeight * scale} fill="url(#cutHatch)" stroke={pal.ink} strokeWidth={1.5 * pal.lw} />}
     {concealedAtRear && (() => {
-      const coverH = Math.max(4, d.porcelainThickness * scale)
-      const coverTop = floorYAt(basinBackX + coverSectionWidth) - coverH
+      // Thin porcelain lid, top flush with the end of the slope; a drainage slot is left at its front edge.
+      const lidH = Math.max(3, d.porcelainThickness * scale)
+      const lidW = Math.max(4, slopeStartX - basinBackX - Math.max(1.5, d.drainGap * scale))
+      const wasteX = (basinBackX + slopeStartX) / 2
+      const wasteHalf = Math.min((slopeStartX - basinBackX) * .25, Math.max(2, 20 * scale))
       // Label sits above the rim with a leader so it never crosses the depth dimension or the cavity walls.
-      const labelX = basinBackX + coverSectionWidth + (compact ? 22 : 34)
+      const labelX = slopeStartX + (compact ? 22 : 34)
       const labelY = oy - (compact ? 10 : 14)
       return <g>
-        <rect x={basinBackX} y={coverTop} width={coverSectionWidth} height={coverH} fill={pal.cut} stroke={pal.ink} strokeWidth={1 * pal.lw} />
+        <rect x={basinBackX} y={rearBaseY} width={lidW} height={lidH} fill={pal.cut} stroke={pal.ink} strokeWidth={1 * pal.lw} />
+        {!broken && <g stroke={pal.mid} strokeWidth={.7 * pal.lw} strokeDasharray="2 2">
+          <line x1={wasteX - wasteHalf} x2={wasteX - wasteHalf} y1={channelBottomY} y2={oy + h} />
+          <line x1={wasteX + wasteHalf} x2={wasteX + wasteHalf} y1={channelBottomY} y2={oy + h} />
+        </g>}
         {(!compact || showDimensions) && <>
-          <polyline points={`${basinBackX + coverSectionWidth / 2},${coverTop} ${basinBackX + coverSectionWidth / 2},${labelY + 4} ${labelX - 3},${labelY + 4}`} fill="none" stroke={pal.mid} strokeWidth={.7 * pal.lw} />
+          <polyline points={`${basinBackX + lidW / 2},${rearBaseY} ${basinBackX + lidW / 2},${labelY + 4} ${labelX - 3},${labelY + 4}`} fill="none" stroke={pal.mid} strokeWidth={.7 * pal.lw} />
           <text x={labelX} y={labelY + 6} className="technical-label">CONCEALED COVER</text>
+          {/* Beside the channel, under the slope: clear of the floor and the underside at any height. */}
+          <text x={slopeStartX + 5} y={channelBottomY} className="technical-label">DRAIN CHANNEL</text>
         </>}
       </g>
     })()}
@@ -273,11 +283,12 @@ export function SideView({ g, compact = false, showDimensions = !compact, svgRef
       <DimensionLine x1={backX} y1={oy + h} x2={frontX} y2={oy + h} label={`${d.overallDepth} mm`} offset={compact ? 30 : 42} compact={compact} />
       <DimensionLine x1={frontX} y1={oy} x2={frontX} y2={oy + h} label={`${d.overallHeight} mm${broken ? ' (broken)' : ''}`} offset={compact ? 27 : 52} vertical compact={compact} />
       {/* Compact sheets dimension the bowl depths through the rims, leaving the cavity clear. */}
-      <DimensionLine x1={basinBackX} y1={innerTop} x2={basinBackX} y2={rearBaseY} label={`${Math.round(g.bowlDepthRear)} mm`} offset={compact ? -16 : 28} vertical compact={compact} />
-      <DimensionLine x1={basinFrontX} y1={innerTop} x2={basinFrontX} y2={frontBaseY} label={`${Math.round(g.bowlDepthFront)} mm`} offset={compact ? 16 : -28} vertical compact={compact} />
+      {/* Basin levels are measured down from the finished top surface. */}
+      <DimensionLine x1={basinBackX} y1={oy} x2={basinBackX} y2={rearBaseY} label={`${Math.round(g.bowlDepthRear)} mm`} offset={compact ? -16 : 28} vertical compact={compact} />
+      <DimensionLine x1={basinFrontX} y1={oy} x2={basinFrontX} y2={frontBaseY} label={`${Math.round(g.bowlDepthFront)} mm`} offset={compact ? 16 : -28} vertical compact={compact} />
       {d.upstandEnabled && <DimensionLine x1={backX} y1={oy - d.backUpstandHeight * scale} x2={backX} y2={oy} label={`${d.backUpstandHeight} mm`} offset={-38} vertical />}
       {funnel && <>
-        <DimensionLine x1={drainSX} y1={innerTop} x2={drainSX} y2={drainBaseY - 4} label={`${Math.round(g.bowlDepthDrain)} mm`} vertical compact={compact} />
+        <DimensionLine x1={drainSX} y1={oy} x2={drainSX} y2={drainBaseY - 4} label={`${Math.round(g.bowlDepthDrain)} mm`} vertical compact={compact} />
         <g className="fall-callout">
           {[basinBackX + (drainSX - basinBackX) * .15, basinFrontX - (basinFrontX - drainSX) * .15].map((x, i) => { const a = funnelArrow(x); return <line key={i} x1={a.x1} y1={a.y1} x2={a.x2} y2={a.y2} markerEnd="url(#flowArrow)" /> })}
           <text x={drainSX} y={drainBaseY + (compact ? 14 : 20)} textAnchor="middle">{Math.round(g.bowlDepthDrain - g.bowlDepthRear)} mm FALL TO DRAIN</text>
@@ -288,7 +299,7 @@ export function SideView({ g, compact = false, showDimensions = !compact, svgRef
         : <g className="fall-callout">
           <line x1={flowStartX} y1={flowStartY} x2={flowEndX} y2={flowEndY} markerEnd="url(#flowArrow)" />
           <text x={(flowStartX + flowEndX) / 2} y={(flowStartY + flowEndY) / 2 - 8} textAnchor="middle">{Math.round(calculatedFall)} mm FALL TO {fallDirection}</text>
-          <text x={fallDirection === 'REAR' ? slopeStartX + 5 : basinFrontX - 5} y={(fallDirection === 'REAR' ? rearBaseY : frontBaseY) + 18} textAnchor={fallDirection === 'REAR' ? 'start' : 'end'} className="low-point-label">LOW POINT</text>
+          {!concealedAtRear && <text x={fallDirection === 'REAR' ? slopeStartX + 5 : basinFrontX - 5} y={(fallDirection === 'REAR' ? rearBaseY : frontBaseY) + 18} textAnchor={fallDirection === 'REAR' ? 'start' : 'end'} className="low-point-label">LOW POINT</text>}
         </g>}
       {!compact && <text x={ox + 8} y={oy + h - 8} className="technical-label">{d.porcelainThickness} mm PORCELAIN</text>}
     </>}

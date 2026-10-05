@@ -1,7 +1,17 @@
 import type { SinkDesign } from '../types/sink'
 
+/**
+ * Standard Artiling basin: one continuous fall from front to rear. Levels are measured
+ * down from the finished top surface; the slope angle follows from the usable run.
+ */
+export const DEFAULT_FRONT_BASIN_DEPTH_MM = 35
+/** Basin floor at the rear: top of the concealed drain cover. */
+export const DEFAULT_REAR_DRAIN_LEVEL_MM = 120
+export const DEFAULT_VERTICAL_FALL_MM = DEFAULT_REAR_DRAIN_LEVEL_MM - DEFAULT_FRONT_BASIN_DEPTH_MM
+/** Concealed drain channel below the terminal basin level (Artiling concealed drain reference). */
+export const DEFAULT_DRAIN_CHANNEL_DEPTH_MM = 60
 /** Minimum internal depth of the basin, mm. */
-export const MIN_INTERNAL_DEPTH = 40
+export const MIN_INTERNAL_DEPTH = DEFAULT_FRONT_BASIN_DEPTH_MM
 /** Centre spacing of multiple tap holes, as a multiple of the hole diameter. */
 export const TAP_HOLE_SPACING = 1.8
 
@@ -37,6 +47,16 @@ export interface SinkGeometry {
   fallToDrain: boolean
   /** Internal depth at the drain, mm. */
   bowlDepthDrain: number
+  /** True when the floor ends on a concealed rear drain cover. */
+  concealedDrain: boolean
+  /** Horizontal length of the sloping floor, mm (basin depth less the drain cover). */
+  slopeRun: number
+  /** Floor slope, degrees, derived from the fall and the run. 0 when level. */
+  slopeAngle: number
+  /** Concealed drain: void under the cover, from cover top down to the channel floor, mm below top. */
+  drainChannelBottom: number
+  /** Concealed drain: clear height of the void under the cover, mm. 0 for other drains. */
+  drainChannelDepth: number
   drawerWidth: number
 }
 
@@ -142,10 +162,20 @@ export function calculateGeometry(design: SinkDesign): SinkGeometry {
     }
   }
 
+  // Concealed drain: the slope ends flush with the top of the cover; the channel void sits beneath it.
+  const concealedDrain = design.drainType === 'Concealed Linear'
+  const coverDepth = concealedDrain ? Math.min(design.coverPlateDepth, basinDepth - 1) : 0
+  const slopeRun = Math.max(1, basinDepth - coverDepth)
+  const floorFall = Math.abs(bowlDepthRear - bowlDepthFront)
+  const slopeAngle = fallToDrain || floorFall === 0 ? 0 : Math.atan(floorFall / slopeRun) * 180 / Math.PI
+  const coverUnderside = bowlDepthRear + design.porcelainThickness
+  const drainChannelBottom = concealedDrain ? Math.max(coverUnderside, Math.min(bowlDepthRear + DEFAULT_DRAIN_CHANNEL_DEPTH_MM, design.overallHeight - design.porcelainThickness)) : bowlDepthRear
+  const drainChannelDepth = concealedDrain ? drainChannelBottom - coverUnderside : 0
+
   return {
     design, basinWidth, basinDepth, edgeLeft, edgeRight, edgeFront, edgeBack, dividerWidth, basins, drains,
     drainX: drains[0].x, drainY, tapHoles, tapX: tapCentres[0] ?? design.overallWidth / 2, tapY, maximumInternalDepth,
-    bowlDepthFront, bowlDepthRear, fallToDrain,
+    bowlDepthFront, bowlDepthRear, fallToDrain, concealedDrain, slopeRun, slopeAngle, drainChannelBottom, drainChannelDepth,
     bowlDepthDrain: fallToDrain ? bowlDepthDrain : atRear ? bowlDepthRear : (bowlDepthFront + bowlDepthRear) / 2,
     drawerWidth: design.drawerAutoWidth ? design.overallWidth : design.drawerWidth,
   }

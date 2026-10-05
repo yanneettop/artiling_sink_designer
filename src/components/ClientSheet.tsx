@@ -73,9 +73,9 @@ export function ClientPreview({ g, svgRef }: { g: SinkGeometry; svgRef?: Ref<SVG
     ['BASIN OPENING', `${Math.round(g.basinWidth)} × ${Math.round(g.basinDepth)} mm`],
     ['RIMS  L / R / FRONT / REAR', `${d.leftRimWidth} / ${d.rightRimWidth} / ${d.frontRimWidth} / ${d.rearRimWidth} mm`],
     g.fallToDrain
-      ? ['INTERNAL DEPTH  WALLS / DRAIN', `${Math.round(g.bowlDepthRear)} / ${Math.round(g.bowlDepthDrain)} mm`]
-      : ['INTERNAL DEPTH  REAR / FRONT', `${Math.round(g.bowlDepthRear)} / ${Math.round(g.bowlDepthFront)} mm`],
-    ['BASE', to === 'level' ? 'Flat' : `${fall} mm fall to ${to}`],
+      ? ['DEPTH BELOW TOP  WALLS / DRAIN', `${Math.round(g.bowlDepthRear)} / ${Math.round(g.bowlDepthDrain)} mm`]
+      : ['DEPTH BELOW TOP  FRONT / REAR', `${Math.round(g.bowlDepthFront)} / ${Math.round(g.bowlDepthRear)} mm`],
+    ['BASE', to === 'level' ? 'Flat' : `${fall} mm fall to ${to}${g.slopeAngle ? ` · ${g.slopeAngle.toFixed(1)}°` : ''}`],
     ['BASINS / MOUNTING', `${d.basinCount} / ${d.mountingType === 'Wall Mounted' ? 'Wall-mounted' : d.mountingType}`],
   ]
   const fittingsLeft: [string, string][] = [

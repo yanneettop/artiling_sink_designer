@@ -1,3 +1,5 @@
+import { DEFAULT_FRONT_BASIN_DEPTH_MM, DEFAULT_REAR_DRAIN_LEVEL_MM, DEFAULT_VERTICAL_FALL_MM } from '../lib/sinkGeometry'
+
 export const DRAIN_TYPES = ['Concealed Linear', 'Circular', 'Linear'] as const
 export const TAP_TYPES = ['Deck Mounted', 'Wall Mounted', 'None'] as const
 export const BASE_TYPES = ['Sloped Front to Back', 'Flat'] as const
@@ -138,8 +140,9 @@ export const createDefaultDesign = (reference = 'AS-SINK-001'): SinkDesign => ({
   drawersEnabled: false, drawerCount: 2, drawerAutoWidth: true, drawerWidth: 800,
   drawerDepth: 430, drawerHeights: [240, 240], equalDrawerHeights: true, drawerGap: 0, drawerTopGap: 0,
   vanityCladding: false, shelfCount: 0,
-  baseType: 'Sloped Front to Back', baseFall: 20,
-  fallControl: 'Fall and Low Point', fallLowPoint: 'Rear Internal Corner', shallowBowlDepth: 138, rearBowlDepth: 158, frontBowlDepth: 138,
+  baseType: 'Sloped Front to Back', baseFall: DEFAULT_VERTICAL_FALL_MM,
+  fallControl: 'Fall and Low Point', fallLowPoint: 'Rear Internal Corner', shallowBowlDepth: DEFAULT_FRONT_BASIN_DEPTH_MM,
+  rearBowlDepth: DEFAULT_REAR_DRAIN_LEVEL_MM, frontBowlDepth: DEFAULT_FRONT_BASIN_DEPTH_MM,
   drainType: 'Concealed Linear', concealedDetail: 'Standard', drainPosition: 'Rear', drainDiameter: 45,
   drainLength: 700, drainWidth: 40, drainOffsetBack: 32, drainOffsetLeft: 38,
   centreDrainAutomatically: true, coverPlateWidth: 700, coverPlateDepth: 40, coverPlateFullWidth: true, drainGap: 5,

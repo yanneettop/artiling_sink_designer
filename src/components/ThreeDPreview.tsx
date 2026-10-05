@@ -354,19 +354,24 @@ function SinkModel({ g, materials, technical }: { g: SinkGeometry; materials: Ma
   const frontFloorY = -g.bowlDepthFront * SCALE
   const basinLeftX = -W / 2 + leftRim
   const basinRightX = W / 2 - rightRim
+  // Concealed drain: the single fall ends flush with the lid; the open channel sits beneath it.
+  const concealed = g.concealedDrain
+  const floorBackZ = basinFrontZ - g.slopeRun * SCALE
+  const channelBottomY = -g.drainChannelBottom * SCALE
+  const wallBackY = concealed ? channelBottomY : rearFloorY
   const floorVertices = [
-    basinLeftX, rearFloorY, basinBackZ, basinRightX, rearFloorY, basinBackZ, basinRightX, frontFloorY, basinFrontZ, basinLeftX, frontFloorY, basinFrontZ,
-    basinLeftX, rearFloorY - T, basinBackZ, basinRightX, rearFloorY - T, basinBackZ, basinRightX, frontFloorY - T, basinFrontZ, basinLeftX, frontFloorY - T, basinFrontZ,
+    basinLeftX, rearFloorY, floorBackZ, basinRightX, rearFloorY, floorBackZ, basinRightX, frontFloorY, basinFrontZ, basinLeftX, frontFloorY, basinFrontZ,
+    basinLeftX, rearFloorY - T, floorBackZ, basinRightX, rearFloorY - T, floorBackZ, basinRightX, frontFloorY - T, basinFrontZ, basinLeftX, frontFloorY - T, basinFrontZ,
   ]
   // Inner walls sit under the deck; where a rim is only the porcelain thickness the outer panel is the basin wall.
   const hasInner = (rim: number) => rim > T + .0005
   const leftWallVertices = [
     basinLeftX - T, -T, basinBackZ, basinLeftX, -T, basinBackZ, basinLeftX, -T, basinFrontZ, basinLeftX - T, -T, basinFrontZ,
-    basinLeftX - T, rearFloorY, basinBackZ, basinLeftX, rearFloorY, basinBackZ, basinLeftX, frontFloorY, basinFrontZ, basinLeftX - T, frontFloorY, basinFrontZ,
+    basinLeftX - T, wallBackY, basinBackZ, basinLeftX, wallBackY, basinBackZ, basinLeftX, frontFloorY, basinFrontZ, basinLeftX - T, frontFloorY, basinFrontZ,
   ]
   const rightWallVertices = [
     basinRightX, -T, basinBackZ, basinRightX + T, -T, basinBackZ, basinRightX + T, -T, basinFrontZ, basinRightX, -T, basinFrontZ,
-    basinRightX, rearFloorY, basinBackZ, basinRightX + T, rearFloorY, basinBackZ, basinRightX + T, frontFloorY, basinFrontZ, basinRightX, frontFloorY, basinFrontZ,
+    basinRightX, wallBackY, basinBackZ, basinRightX + T, wallBackY, basinBackZ, basinRightX + T, frontFloorY, basinFrontZ, basinRightX, frontFloorY, basinFrontZ,
   ]
   const eachBasinW = g.basins[0].width
   // The concealed-drain lid always runs the full internal width of each basin.
@@ -376,15 +381,13 @@ function SinkModel({ g, materials, technical }: { g: SinkGeometry; materials: Ma
   const drainZ = d.drainPosition === 'Rear' ? basinBackZ + d.drainOffsetBack * SCALE : (basinBackZ + basinFrontZ) / 2
   const drainFloorY = -g.bowlDepthDrain * SCALE
   const funnel = g.fallToDrain
-  const deepest = Math.max(-rearFloorY, -frontFloorY, g.bowlDepthDrain * SCALE)
-  const coverDepth3d = d.coverPlateDepth * SCALE
+  const deepest = Math.max(-rearFloorY, -frontFloorY, g.bowlDepthDrain * SCALE, concealed ? -channelBottomY : 0)
+  const slot = Math.max(.002, d.drainGap * SCALE)
+  const coverDepth3d = Math.max(.004, floorBackZ - basinBackZ - slot)
   const coverFrontZ = basinBackZ + coverDepth3d
-  const coverJoinProgress = Math.min(1, Math.max(0, coverDepth3d / Math.max(.001, basinD)))
-  const coverJoinY = rearFloorY + (frontFloorY - rearFloorY) * coverJoinProgress
   const upstandH = d.upstandEnabled ? d.backUpstandHeight * SCALE : 0
   const holesPerBasin = Math.max(1, Math.round(d.tapHoleCount))
   const spoutIndex = Math.floor((holesPerBasin - 1) / 2)
-  const gap = .004
   const e = technical
 
   return <group>
@@ -401,7 +404,11 @@ function SinkModel({ g, materials, technical }: { g: SinkGeometry; materials: Ma
       : <SolidMesh vertices={floorVertices} material={porcelain} edges={e} />}
     {hasInner(leftRim) && <SolidMesh vertices={leftWallVertices} material={porcelain} edges={e} />}
     {hasInner(rightRim) && <SolidMesh vertices={rightWallVertices} material={porcelain} edges={e} />}
-    {hasInner(rearRim) && <Box size={[basinW, Math.max(.001, -rearFloorY - T), T]} position={[(leftRim - rightRim) / 2, (rearFloorY - T) / 2, basinBackZ - T / 2]} material={porcelain} edges={e} />}
+    {hasInner(rearRim) && <Box size={[basinW, Math.max(.001, -wallBackY - T), T]} position={[(leftRim - rightRim) / 2, (wallBackY - T) / 2, basinBackZ - T / 2]} material={porcelain} edges={e} />}
+    {concealed && <>
+      <Box size={[basinW, Math.max(.001, rearFloorY - T - channelBottomY), T]} position={[(leftRim - rightRim) / 2, (rearFloorY - T + channelBottomY) / 2, floorBackZ - T / 2]} material={porcelain} edges={e} />
+      <Box size={[basinW, T, Math.max(.001, floorBackZ - basinBackZ)]} position={[(leftRim - rightRim) / 2, channelBottomY - T / 2, (basinBackZ + floorBackZ) / 2]} material={porcelain} edges={e} />
+    </>}
     {hasInner(frontRim) && <Box size={[basinW, Math.max(.001, -frontFloorY - T), T]} position={[(leftRim - rightRim) / 2, (frontFloorY - T) / 2, basinFrontZ + T / 2]} material={porcelain} edges={e} />}
 
     {upstandH > 0 && <Box size={[W, upstandH, T]} position={[0, upstandH / 2, backZ + T / 2]} material={porcelain} edges={e} />}
@@ -409,12 +416,12 @@ function SinkModel({ g, materials, technical }: { g: SinkGeometry; materials: Ma
     {g.basins.slice(1).map((basin, index) => <Box key={`divider-${index}`} size={[g.dividerWidth * SCALE, Math.max(.001, deepest - T), basinD]} position={[(basin.x - g.dividerWidth / 2 - d.overallWidth / 2) * SCALE, -T - (deepest - T) / 2, (basinBackZ + basinFrontZ) / 2]} material={porcelain} edges={e} />)}
 
     {d.drainType === 'Concealed Linear' && drainXs.map((x, index) => <group key={`cover-${index}`}>
-      <Box size={[coverWidth3d, T, coverDepth3d]} position={[x, coverJoinY - T / 2 + .003, basinBackZ + coverDepth3d / 2]} material={porcelain} edges={e} />
+      <Box size={[coverWidth3d, T, coverDepth3d]} position={[x, rearFloorY - T / 2, basinBackZ + coverDepth3d / 2]} material={porcelain} edges={e} />
       {e
-        ? <Line points={[[x - coverWidth3d / 2, coverJoinY + .008, coverFrontZ], [x + coverWidth3d / 2, coverJoinY + .008, coverFrontZ]]} color="#62635e" lineWidth={1} />
-        : <Box size={[coverWidth3d, .006, gap * 1.5]} position={[x, coverJoinY - .002, coverFrontZ + gap]} material={shadowGap} />}
+        ? <Line points={[[x - coverWidth3d / 2, rearFloorY + .004, coverFrontZ], [x + coverWidth3d / 2, rearFloorY + .004, coverFrontZ]]} color="#62635e" lineWidth={1} />
+        : <Box size={[coverWidth3d, .006, slot]} position={[x, rearFloorY - .004, coverFrontZ + slot / 2]} material={shadowGap} />}
     </group>)}
-    {e && d.baseType === 'Sloped Front to Back' && !funnel && <Line points={[[0, frontFloorY + .028, basinFrontZ - .08], [0, rearFloorY + .028, basinBackZ + .08]]} color="#73746e" lineWidth={1.4} />}
+    {e && d.baseType === 'Sloped Front to Back' && !funnel && <Line points={[[0, frontFloorY + .028, basinFrontZ - .08], [0, rearFloorY + .028, (concealed ? floorBackZ : basinBackZ) + .08]]} color="#73746e" lineWidth={1.4} />}
     {d.drainType === 'Linear' && drainXs.map((x, index) => <Box key={`linear-${index}`} size={[Math.min(d.drainLength, eachBasinW) * SCALE, .01, d.drainWidth * SCALE]} position={[x, drainFloorY + .004, drainZ + d.drainWidth * SCALE / 2]} material={e ? shadowGap : metal} />)}
     {d.drainType === 'Circular' && drainXs.map((x, index) => <group key={`round-${index}`} position={[x, drainFloorY + (funnel ? .012 : .006), drainZ]}>
       <mesh material={e ? shadowGap : metal} receiveShadow><cylinderGeometry args={[d.drainDiameter * SCALE / 2, d.drainDiameter * SCALE / 2, .008, 40]} /></mesh>

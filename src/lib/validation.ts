@@ -45,6 +45,7 @@ export function validateGeometry(g: SinkGeometry): ValidationErrors {
       if (d.frontBowlDepth < MIN_INTERNAL_DEPTH || d.frontBowlDepth > max) set('frontBowlDepth', `Front depth must be between ${MIN_INTERNAL_DEPTH} and ${max} mm.`)
       if (d.rearBowlDepth === d.frontBowlDepth) set('frontBowlDepth', 'Both depths are equal. Use a flat base.')
     }
+    if (g.concealedDrain && g.drainChannelDepth <= 0) set('overallHeight', `Height leaves no drain channel below the cover. The rear level is ${Math.round(g.bowlDepthRear)} mm below the top.`)
   }
 
   const eachBasin = g.basins[0].width
