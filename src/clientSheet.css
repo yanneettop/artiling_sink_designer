@@ -1,0 +1,40 @@
+/* Client design sheet — portrait A4 in the Artiling quotation style (Jost + Cormorant Garamond on warm paper). */
+@font-face { font-family: 'Jost'; src: url('/fonts/jost-latin-variable.woff2') format('woff2'); font-weight: 100 900; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Cormorant Garamond'; src: url('/fonts/cormorant-garamond-latin-variable.woff2') format('woff2'); font-weight: 300 700; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Cormorant Garamond'; src: url('/fonts/cormorant-garamond-latin-variable-italic.woff2') format('woff2'); font-weight: 300 700; font-style: italic; font-display: swap; }
+
+.quote-sheet { --qs-ink: #26231e; --qs-body: #3a352e; --qs-muted: #8b8478; --qs-gold: #9c7f4e; --qs-rule: #d8cdc1; --qs-slab: #fbf9f5; --qs-page: #f4efe8; background: var(--qs-page); }
+.quote-sheet text { font-family: 'Jost', 'Segoe UI', sans-serif; }
+
+.quote-sheet .qs-brand { font-size: 17px; font-weight: 500; letter-spacing: .32em; fill: var(--qs-body); }
+.quote-sheet .qs-running { font-size: 14.8px; font-weight: 300; fill: var(--qs-muted); }
+.quote-sheet .qs-kicker { font-size: 15.6px; font-weight: 600; letter-spacing: .3em; fill: var(--qs-gold); }
+.quote-sheet .qs-title { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 48px; font-weight: 500; fill: var(--qs-ink); }
+.quote-sheet .qs-meta-label, .quote-sheet .qs-section { font-size: 14px; font-weight: 600; letter-spacing: .3em; fill: var(--qs-gold); }
+.quote-sheet .qs-meta-value { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 25px; font-weight: 500; fill: var(--qs-ink); }
+.quote-sheet .qs-key-label { font-size: 11.5px; font-weight: 500; letter-spacing: .18em; fill: var(--qs-muted); }
+.quote-sheet .qs-key-value { font-size: 17.5px; font-weight: 400; fill: var(--qs-ink); }
+.quote-sheet .qs-row-label { font-size: 18px; font-weight: 300; fill: var(--qs-body); }
+.quote-sheet .qs-row-value { font-size: 18px; font-weight: 500; fill: var(--qs-ink); }
+.quote-sheet .qs-note text, .quote-sheet text.qs-note { font-family: 'Cormorant Garamond', Georgia, serif; font-style: italic; font-size: 19.5px; fill: var(--qs-muted); }
+.quote-sheet .qs-rule { stroke: var(--qs-rule); stroke-width: 1; }
+.quote-sheet .qs-sign { stroke: var(--qs-muted); stroke-width: 1; stroke-dasharray: 3 3; }
+
+/* Nested drawings: section headings replace their own titles. */
+.quote-sheet .compact-svg > .view-title, .quote-sheet .compact-svg > .view-subtitle { display: none; }
+.quote-sheet .drawing-lines line, .quote-sheet .drawing-lines rect, .quote-sheet .drawing-lines circle,
+.quote-sheet .dimension line, .quote-sheet .fall-callout line, .quote-sheet .axonometric-svg polygon,
+.quote-sheet .axonometric-svg path, .quote-sheet .axonometric-svg line, .quote-sheet .projected-dimension line { vector-effect: none; }
+.quote-sheet .dimension line { stroke: #8a8377; stroke-width: .5; }
+.quote-sheet .dimension .extension { stroke: #b9afa2; stroke-width: .4; }
+.quote-sheet .dimension text { font-size: 10.5px; font-weight: 300; fill: var(--qs-body); }
+.quote-sheet .technical-label { font-size: 7.5px; font-weight: 400; letter-spacing: .12em; fill: var(--qs-muted); stroke: var(--qs-slab); }
+.quote-sheet .orientation-label { font-size: 7.5px; font-weight: 600; letter-spacing: .22em; fill: var(--qs-gold); }
+.quote-sheet .fall-callout line { stroke: var(--qs-ink); stroke-width: .9; }
+.quote-sheet .fall-callout text { font-size: 8px; font-weight: 500; letter-spacing: .08em; fill: var(--qs-body); stroke: var(--qs-slab); }
+.quote-sheet .fall-callout text.low-point-label { fill: var(--qs-muted); }
+.quote-sheet .sheet-axonometric polygon { stroke-width: 2.2; }
+.quote-sheet .sheet-axonometric .iso-opening-outline { stroke-width: 1.2; }
+.quote-sheet .sheet-axonometric .projected-dimension line { stroke: #8a8377; stroke-width: 1.1; }
+.quote-sheet .sheet-axonometric .projected-dimension line.extension { stroke: #b9afa2; stroke-width: .9; opacity: 1; }
+.quote-sheet .sheet-axonometric .projected-dimension text { font-size: 21px; font-weight: 400; letter-spacing: .06em; fill: var(--qs-body); stroke: var(--qs-page); stroke-width: 6px; }

@@ -3,7 +3,8 @@ import { ArrowLeft, CaretDown, Copy, DownloadSimple, FilePdf, FloppyDisk, Folder
 import { ParameterPanel } from './components/ParameterPanel'
 import { PriceBar, PricePanel } from './components/PricePanel'
 import { QuoteReview } from './components/QuoteReview'
-import { AxonometricView, ClientPreview, FrontView, SideView, TopView } from './components/TechnicalSvg'
+import { AxonometricView, FrontView, SideView, TopView } from './components/TechnicalSvg'
+import { ClientPreview } from './components/ClientSheet'
 import { SavedDesigns } from './components/SavedDesigns'
 import { StartScreen } from './components/StartScreen'
 import { applyOpeningRules, calculateGeometry } from './lib/sinkGeometry'
@@ -116,7 +117,7 @@ export default function App() {
       else if (activeView === 'quote') return notify('Open a drawing view to export PNG or SVG')
       else if (activeView === 'threeD' && kind === 'png' && threeCanvas.current) exportCanvasPng(threeCanvas.current, fileName('3d'))
       else if (activeView === 'threeD' && kind === 'svg') return notify('3D is raster only. Use PNG.')
-      else if (kind === 'svg' && activeSvg.current) exportSvg(activeSvg.current, fileName())
+      else if (kind === 'svg' && activeSvg.current) await exportSvg(activeSvg.current, fileName())
       else if (kind === 'png' && activeSvg.current) await exportPng(activeSvg.current, fileName())
       notify(`${kind.toUpperCase()} exported`)
     } catch { notify('Export failed. Please try again.') }
