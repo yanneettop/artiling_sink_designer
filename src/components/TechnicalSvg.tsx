@@ -67,11 +67,14 @@ function DrainSymbol({ g, sx, sy, x, y }: { g: SinkGeometry; sx: number; sy: num
   const drainWidth = Math.min(basinW * sx - 12, d.drainLength * sx)
   const height = Math.max(4, d.drainWidth * sy)
   if (d.drainType === 'Linear') return <rect x={x - drainWidth / 2} y={y - height / 2} width={drainWidth} height={height} fill={pal.ink} rx="1" />
-  // The concealed-drain lid runs the full internal width of the basin.
+  // The concealed-drain lid runs the full internal width of the basin; the drainage slot is its front edge.
   const coverWidth = basinW * sx
   const coverH = Math.max(7, d.coverPlateDepth * sy)
+  const slot = Math.min(coverH * .35, Math.max(1.6, d.drainGap * sy))
+  const top = y - coverH / 2
   return <g>
-    <rect x={x - coverWidth / 2} y={y - coverH / 2} width={coverWidth} height={coverH} fill={pal.cut} stroke={pal.ink} strokeWidth={0.8 * pal.lw} />
+    <rect x={x - coverWidth / 2} y={top} width={coverWidth} height={coverH - slot} fill={pal.slab} stroke={pal.ink} strokeWidth={1.1 * pal.lw} />
+    <rect x={x - coverWidth / 2} y={top + coverH - slot} width={coverWidth} height={slot} fill={pal.ink} />
   </g>
 }
 
@@ -130,13 +133,13 @@ export function TopView({ g, compact = false, showDimensions = !compact, svgRef 
         <DimensionLine x1={ox + w} y1={oy} x2={ox + w} y2={by} label={`${Math.round(g.edgeBack)} mm`} offset={57} vertical compact />
         <DimensionLine x1={ox + w} y1={by + bh} x2={ox + w} y2={oy + h} label={`${Math.round(g.edgeFront)} mm`} offset={57} vertical compact />
       </>}
-      <text
-        x={drainX}
-        y={d.drainType === 'Concealed Linear' ? drainY : drainY - 15}
-        textAnchor="middle"
-        dominantBaseline={d.drainType === 'Concealed Linear' ? 'middle' : undefined}
-        className="technical-label"
-      >{d.drainType === 'Circular' ? 'ROUND' : d.drainType === 'Linear' ? 'LINEAR' : 'CONCEALED'} DRAIN{d.drainType === 'Concealed Linear' && g.basins.length === 1 ? ' / FULL WIDTH COVER' : ''}</text>
+      {d.drainType === 'Concealed Linear'
+        // Label sits in the basin just in front of the lid, clear of the basin-depth dimension on the right;
+        // it shortens to fit narrow basins.
+        ? <text x={bx + 5} y={by + Math.max(7, d.coverPlateDepth * scale) + 9} className="technical-label" style={{ stroke: pal.basin }}>
+          {['CONCEALED DRAIN / FULL WIDTH COVER', 'CONCEALED DRAIN COVER', 'DRAIN COVER'].find((label, i, all) => (g.basins.length === 1 || i > 0) && (label.length * 5.4 < g.basins[0].width * scale - 30 || i === all.length - 1))}
+        </text>
+        : <text x={drainX} y={drainY - 15} textAnchor="middle" className="technical-label">{d.drainType === 'Circular' ? 'ROUND' : 'LINEAR'} DRAIN</text>}
       {g.basins.length > 1 && !compact && <text x={bx + bw / 2} y={by + bh - 10} textAnchor="middle" className="technical-label">{g.basins.length} BASINS · {Math.round(g.dividerWidth)} mm DIVIDERS</text>}
     </>}
   </ViewFrame>
