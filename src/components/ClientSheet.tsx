@@ -1,6 +1,6 @@
 import type { ReactNode, Ref } from 'react'
 import { describeFall, type SinkGeometry } from '../lib/sinkGeometry'
-import { AxonometricView, FrontView, PaletteContext, sectionShownHeight, SideView, SvgDefs, TopView, type DrawingPalette } from './TechnicalSvg'
+import { AxonometricView, FrontView, PaletteContext, sectionShownHeight, SideView, SvgDefs, TopView, topViewFrame, type DrawingPalette } from './TechnicalSvg'
 import { BRAND_MARK_PATH, BRAND_MARK_VIEWBOX } from './brandMark'
 
 /**
@@ -52,10 +52,10 @@ function SpecRows({ x, y, width, rows }: { x: number; y: number; width: number; 
 }
 
 /** Nests a compact drawing, cropping it to its content box and scaling it into a slot. */
-function Placed({ box, slot, maxScale = 1.6, children }: { box: { x: number; y: number; w: number; h: number }; slot: { x: number; y: number; w: number; h: number }; maxScale?: number; children: ReactNode }) {
+function Placed({ box, slot, maxScale = 1.6, middle = false, children }: { box: { x: number; y: number; w: number; h: number }; slot: { x: number; y: number; w: number; h: number }; maxScale?: number; middle?: boolean; children: ReactNode }) {
   const s = Math.min(slot.w / box.w, slot.h / box.h, maxScale)
   const tx = slot.x + (slot.w - box.w * s) / 2 - box.x * s
-  const ty = slot.y - box.y * s
+  const ty = slot.y + (middle ? (slot.h - box.h * s) / 2 : 0) - box.y * s
   return <g transform={`translate(${tx} ${ty}) scale(${s})`}>{children}</g>
 }
 
@@ -97,6 +97,11 @@ export function ClientPreview({ g, svgRef }: { g: SinkGeometry; svgRef?: Ref<SVG
     ['ISSUED', issued],
   ]
 
+  // Plan: crop to the slab plus its dimensions so wide, shallow sinks fill the slot instead of a fixed frame.
+  const plan = topViewFrame(d, true)
+  const wallTop = d.mountingType === 'Wall Mounted' || d.tapType === 'Wall Mounted' ? 11 : 4
+  const planBox = { x: plan.ox - 36, y: plan.oy - wallTop, w: plan.w + 36 + (d.mountingType === 'Wall Mounted' ? 14 : 4), h: plan.h + wallTop + 40 }
+
   // Section slot: fit the compact section's real content height, so thin slabs grow and tall pedestals shrink.
   const upstand = d.upstandEnabled ? d.backUpstandHeight : 0
   const sectionH = sectionShownHeight(g).shown + upstand
@@ -126,7 +131,7 @@ export function ClientPreview({ g, svgRef }: { g: SinkGeometry; svgRef?: Ref<SVG
 
       {/* 1 · Plan with key dimensions */}
       <SectionHeading y={430} index={1} title="TOP VIEW" />
-      <Placed box={{ x: 18, y: 44, w: 410, h: 240 }} slot={{ x: LEFT - 10, y: 452, w: 660, h: 330 }}>
+      <Placed box={planBox} slot={{ x: LEFT - 6, y: 456, w: 676, h: 340 }} maxScale={2.4} middle>
         <TopView g={g} compact showDimensions />
       </Placed>
       <KeyList x={800} y={476} width={RIGHT - 800} rows={keyDimensions} />

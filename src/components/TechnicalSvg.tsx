@@ -87,13 +87,18 @@ function ViewFrame({ children, title, subtitle, viewBox, svgRef, compact = false
   </svg>
 }
 
-export function TopView({ g, compact = false, showDimensions = !compact, svgRef }: { g: SinkGeometry; compact?: boolean; showDimensions?: boolean; svgRef?: Ref<SVGSVGElement> }) {
-  const pal = usePalette()
-  const d = g.design
+/** Where the slab sits in the top view's own coordinates. */
+export function topViewFrame(d: SinkGeometry['design'], compact: boolean) {
   const plot = compact ? { x: 55, y: 58, w: 360, h: 180 } : { x: 100, y: 95, w: 620, h: 350 }
   const scale = Math.min(plot.w / d.overallWidth, plot.h / d.overallDepth)
   const w = d.overallWidth * scale, h = d.overallDepth * scale
-  const ox = plot.x + (plot.w - w) / 2, oy = plot.y + (plot.h - h) / 2
+  return { scale, w, h, ox: plot.x + (plot.w - w) / 2, oy: plot.y + (plot.h - h) / 2 }
+}
+
+export function TopView({ g, compact = false, showDimensions = !compact, svgRef }: { g: SinkGeometry; compact?: boolean; showDimensions?: boolean; svgRef?: Ref<SVGSVGElement> }) {
+  const pal = usePalette()
+  const d = g.design
+  const { scale, w, h, ox, oy } = topViewFrame(d, compact)
   const bx = ox + g.edgeLeft * scale, by = oy + g.edgeBack * scale
   const bw = g.basinWidth * scale, bh = g.basinDepth * scale
   const drainX = ox + g.drainX * scale, drainY = oy + g.drainY * scale
